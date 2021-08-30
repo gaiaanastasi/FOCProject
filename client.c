@@ -7,7 +7,8 @@ const char ip_address[16] = "127.0.0.1"
 const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type: \n (1) to see who's online \n (2) to send a request to talk (3) to log out\n\n What do you want to do? ";
 
 int main(){
-	int sd, command;
+	int sd
+	unsigned command;
 
 	//socket creation and instantiation
 	sd = socket(AF_INET, SOCK_STREAM, 0);
@@ -23,7 +24,10 @@ int main(){
 
 	printf("%s", welcomeMessage);
 	while(1){
-		scanf("%d", &command);
+		if(scanf("%d", &command) =! 1){
+			perror("scanf function has read a wrong number of items \n");
+			exit(-1);
+		}
 		switch(command){
 			case 1:		//online people
 				break;
