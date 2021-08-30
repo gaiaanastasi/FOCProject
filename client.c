@@ -4,7 +4,7 @@
 
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1"
-const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type: \n (1) to see who's online \n (2) to send a request to talk (3) to log out\n\n What What do you want to do? ";
+const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type: \n (1) to see who's online \n (2) to send a request to talk (3) to log out\n\n What do you want to do? ";
 
 int main(){
 	int sd, command;
