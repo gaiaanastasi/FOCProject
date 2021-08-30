@@ -117,7 +117,6 @@ int main (int argc, const char** argv){
 			}
 		}
 	}
-	kill(figlio, SIGKILL);	//eseguo kill sul processo per le estrazioni
 	close(socket_ascolto);
 
 	exit(0);
