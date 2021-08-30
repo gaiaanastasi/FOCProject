@@ -12,7 +12,7 @@ int main(){
 
 	//socket creation and instantiation
 	sd = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia 
+	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia 
     srv_addr.sin_family = AF_INET;
     srv_addr.sin_port = htons(atoi(port_address));
     inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
