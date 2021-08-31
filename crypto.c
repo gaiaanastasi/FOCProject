@@ -60,3 +60,39 @@ static DH *get_dh2048(void)
     }
     return dh;
 }
+
+//function that generate a Diffie-Hellman private key
+void generateDHPrivateKey(dhPrivateKey){
+	int ret;
+	EVP_PKEY* params;	//DH parameters
+	EVP_PKEY* DHkey;	//it will contain DH couple of keys
+	EVP_PKEY_CTX* DHctx;	//DH context
+	DH* temp = get_dh2048();
+	params = EVP_PKEY_new();
+	if(params == NULL){
+		perror("Error during instantiation of DH parameters\n");
+		exit(-1);
+	}
+	ret = EVP_PKEY_set1_DH(params, temp);
+	if(ret != 1){
+		perror("Error during the copy of the low level DH parameters\n");
+		exit(-1);
+	}
+	DH_free(temp);
+	DHctx = EVP_PKEY_CTX_new(params, NULL);
+	if(DHctx == NULL){
+		perror("Error during the allocation of the context for DH key generation\n");
+		exit(-1);
+	}
+	ret = EVP_PKEY_keygen_init(DHctx);
+	if(ret != 1){
+		perror("Error during initialization of the context for DH key generation\n");
+		exit(-1);
+	}
+	ret = EVP_PKEY_keygen(DHctx, &DHkey);
+	if(ret != 1){
+		perror("Error during generation of Diffie-Hellman key\n");
+		exit(-1);
+	}
+	return DHkey;
+}
