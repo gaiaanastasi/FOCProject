@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 #include "crypto.c"
 #include "utility.c"
 
@@ -14,6 +15,7 @@ const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type:
 
 int main(int argc, const char** argv){
 	int socket;
+	int ret;				//it will contain different integer return values (used for checking)
 	size_t command;			//command typed by the user
 	char* message_recv;
 	char* message_send;
@@ -21,6 +23,9 @@ int main(int argc, const char** argv){
 	X509* serverCertificate = NULL;
 	char* opBuffer; 		//buffer used for different operations
 	int dimOpBuffer = 0;	//length of the content of opBuffer	
+	X509_STORE* certStore = NULL;	//certificate store of the client
+	X509_STORE_CTX* storeCtx = NULL;	//context for certificate verification
+	EVP_PKEY* serverPubK = NULL;	//public key of the server
 
 	//socket creation and instantiation
 	socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -51,7 +56,40 @@ int main(int argc, const char** argv){
 		perror("Error during deserialization of the certificate of the server\n");
 		exit(-1);
 	}
+	certStore = X509_STORE_new();
+	if(certStore == NULL){
+		perror("Error during the creation of the store\n");
+		exit(-1);
+	}
+	ret = x509_STORE_add_cert(certStore, serverCertificate);
+	if(ret != 1){
+		perror("Error during the adding of a certificate\n");
+		exit(-1);
+	}
+	storeCtx = X509_STORE_CTX_new();
+	if(storeCtx == NULL){
+		perror("Error during the creation of the context for certificate verification\n");
+		exit(-1);
+	}
+	ret = X509_STORE_CTX_init(storeCtx, certStore, serverCertificate, NULL);
+	if(ret != 1){
+		perror("Error during the initilization of the certificate-verification context");
+		exit(-1);
+	}
+	ret = X509_verify_cert(storeCtx);
+	if(ret != 1){
+		perror("The certificate of the server can not be verified\n");
+		exit(-1);
+	}
+	//now that I verified the certificate, I can deallocate the certificate-verification context
+	X509_STORE_CTX_free(storeCtx);
+	serverPubK = X509_get_pubkey(serverCertificate);
+	if(serverPubK == NULL){
+		perror("Error during the extraction of the public key of the server from the certificate\n");
+		exit(-1);
+	}
 	
+
 	printf("%s", welcomeMessage);
 	while(1){
 		if(scanf("%d", &command) =! 1){
@@ -68,6 +106,6 @@ int main(int argc, const char** argv){
 
 		}
 	}
-
+	X509_STORE_free(certStore);
 	return 0;
 }
