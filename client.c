@@ -88,7 +88,12 @@ int main(int argc, const char** argv){
 		perror("Error during the extraction of the public key of the server from the certificate\n");
 		exit(-1);
 	}
+
+	//symmetric session key negotiation by using Ephemeral Diffie-Helman
 	
+
+	//now that we have a symmetric key, the public key of the server is useless
+	EVP_PKEY_free(serverPubK);
 
 	printf("%s", welcomeMessage);
 	while(1){
