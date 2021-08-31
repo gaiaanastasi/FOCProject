@@ -49,13 +49,12 @@ void send_obj (int sock, char* buf, size_t len){
 
 //return a portion of the src array
 //l'array ritornato è una porzione di src che va da src[start] a src[end - 1]
-char* extract_data_from_array(char* src, int start, int end){
+void extract_data_from_array(char* dest, char* src, int start, int end){
 	int i,j;
-	if(start < 0 || end < 0 || start > end || src == NULL){
-		perror("wrong indexes");
+	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
+		perror("wrong parameters");
 		return NULL;
 	}
-	char* buffer = (char*) malloc((end - start) * sizeof(char));
 	j = 0;
 	for(i = start; i < end; i++){
 		buffer[j] = src[i];
