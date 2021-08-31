@@ -18,7 +18,9 @@ int main(int argc, const char** argv){
 	int ret;				//it will contain different integer return values (used for checking)
 	size_t command;			//command typed by the user
 	char* message_recv;
+	int recv_len = 0;		//length of the received message
 	char* message_send;
+	int send_len = 0;		//length of the message to be sent
 	char serverNonce[DIM_NONCE];
 	X509* serverCertificate = NULL;
 	char* opBuffer; 		//buffer used for different operations
@@ -29,10 +31,10 @@ int main(int argc, const char** argv){
 
 	//socket creation and instantiation
 	socket = socket(AF_INET, SOCK_STREAM, 0);
-	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia 
-    srv_addr.sin_family = AF_INET;
-    srv_addr.sin_port = htons(atoi(port_address));
-    inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
+	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia
+	srv_addr.sin_family = AF_INET;
+	srv_addr.sin_port = htons(atoi(port_address));
+	inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
     ret = connect(socket, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
 	if(ret < 0){
 		perror("An error occured during the connection phase \n");
@@ -40,22 +42,27 @@ int main(int argc, const char** argv){
 	}
 
 	//authentication with the server
-	message_recv = receive_obj(socket, &dimOpBuffer);
-	serverNonce = extract_data_from_array(message_recv, 0, DIM_NONCE);
+	message_recv = receive_obj(socket, &recv_len);
+	serverNonce = (char*) malloc((DIM_NONCE) * sizeof(char));
+	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE, serverNonce);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
 		exit(-1);
 	}
-	opBuffer = extract_data_from_array(message_recv, DIM_NONCE, dimOpBuffer);	//opBuffer will contain the serialized certificate of the server
+	dimOpBuffer = recv_len - DIM_NONCE;
+	opBuffer = (char*) malloc((dimOpBuffer) * sizeof(char));
+	extract_data_from_array(opBuffer, message_recv, DIM_NONCE, recv_len);	//opBuffer will contain the serialized certificate of the server
 	if(opBuffer == NULL){
 		perror("Error during the extraction of the certificate of the server\n");
 		exit(-1);
 	}
-	serverCertificate = d2i_X509(NULL, &opBuffer, dimOpBuffer - DIM_NONCE);
+	serverCertificate = d2i_X509(NULL, &opBuffer, dimOpBuffer);
 	if(serverCertificate == NULL){
 		perror("Error during deserialization of the certificate of the server\n");
 		exit(-1);
 	}
+	//now that I have the certificate, its serialization is useless
+	free(opBuffer);
 	certStore = X509_STORE_new();
 	if(certStore == NULL){
 		perror("Error during the creation of the store\n");
@@ -89,11 +96,12 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 
-	//symmetric session key negotiation by using Ephemeral Diffie-Helman
+	//symmetric session key negotiation by means of Ephemeral Diffie-Helman
 	
 
-	//now that we have a symmetric key, the public key of the server is useless
+	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
+	free(serverNonce);
 
 	printf("%s", welcomeMessage);
 	while(1){
