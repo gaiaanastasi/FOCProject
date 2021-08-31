@@ -1,6 +1,6 @@
 //UTILITY FILE
 
-char* receive_str (int socket_com){
+char* receive_obj (int socket_com){
 //Funzione per ricevere stringhe
 	ssize_t no_err;
 	uint32_t dim_network;
@@ -14,6 +14,10 @@ char* receive_str (int socket_com){
 	
 	//Ricezione stringa
 	char* buf = malloc(dim_buf+1); 
+	if(!buf){
+		perror("malloc");
+		exit(0);
+	}
 	no_err = recv(socket_com, buf, dim_buf+1, MSG_WAITALL);
 	
 	if (no_err < dim_buf+1 || no_err == -1){
@@ -23,24 +27,6 @@ char* receive_str (int socket_com){
 	return buf;
 }
 
-void send_str (int sock, char* buf){		
-//Funzione utilizzata per inviare stringhe via socket
-	size_t len = strlen(buf);
-	uint32_t dim_str = htonl(len);
-	ssize_t no_err;
-	//Invio al socket la lunghezza della stringa
-	no_err = send (sock, &dim_str, sizeof(uint32_t), 0);		
-	if(no_err == -1 || no_err < sizeof(uint32_t)){
-		perror("send lunghezza della stringa");	
-		exit(-1);
-	}
-	//Invio al socket la stringa vera e propria
-	no_err = send(sock,(void*)buf,len+1, 0 );
-	if(no_err == -1){
-		perror("send");	
-		exit(-1);
-	}
-}
 
 void send_obj (int sock, char* buf, size_t len){		
 //Funzione utilizzata per inviare oggetti via socket

@@ -2,6 +2,70 @@
 
 #include <sys/socket.h>
 #include "utility.c"
+#include "crypto.c"
+
+
+void get_online_user (int sock){
+
+}
+
+
+void handle_send_request(int sock){
+
+}
+
+void handle_logout(int sock){
+
+}
+
+X509* getServerCertificate (){
+	/*///GET THE CERTIFICATE FROM PEM FILE
+	X509* cert;
+	FILE* file = fopen("server.pem", "r");
+	if(!file){
+		perror("fopen");
+		exit(0);
+	}
+	cert = PEM_read_X509(file, NULL, NULL, NULL);
+	if(!cert) {
+		perror("certificate not found");
+		exit(0);
+	}
+	fclose(file); 
+	return cert;
+	*/
+}
+
+
+int handle_auth(int sock){
+	//Server retrieves his certificate and generate a nonce
+	char myNonce[DIM_NONCE];
+	generateNonce(myNonce);
+	
+	/*X509* cert = getServerCertificate();
+
+	//Send a certification over a socket
+
+	unsigned_char* cert_buf = NULL;
+	unsigned int cert_size = id2_X509(cert, &cert_buf);
+	if(cert_size < 0) {
+		perror("certificate size error");
+		exit(0);
+	}
+
+	//Generate msg
+	
+	send_obj(sock, cert_buf, cert_size);
+	send_obj(sock, myNonce, DIM_NONCE);
+	OPENSSL_free(cert_buf);
+
+	client_cert = receive(sock);
+	signed_nonce = receive(sock);
+	bool ret =verifyClientIdentity(client_cert, signed_nonce);
+
+	*/
+
+}
 
 int main (int argc, const char** argv){
     int socket_ascolto; //Socket where our server wait for connections
@@ -77,6 +141,7 @@ int main (int argc, const char** argv){
 					}
 					FD_SET(socket_com, &master);	//Add the new socket to the main set
 					if (socket_com > socket_ascolto) fdmax = socket_com;
+					handle_auth(sock_com);
 					
 				}
 				else{	//It's not socket_ascolto, it's another one
@@ -96,7 +161,7 @@ int main (int argc, const char** argv){
 							printf("Ho ricevuto: %s \n", command); 
 							//Gestione dei vari casi
 							if (strcmp(command, "list")== 0)
-								get_online_user(i);
+								get_online_users(i);
 							else if (strcmp(command, "request")==0){
 								handle_send_request(i);
 							}
