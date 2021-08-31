@@ -10,3 +10,8 @@ void generateNonce(char* nonce){
 		perror("error occured during generation of the nonce");
 	printf("the nonce has been generated\n");
 }
+
+bool verifySignature (char* signed_msg){
+	//SISTEMARE
+	return false;
+}

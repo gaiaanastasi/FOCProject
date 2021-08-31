@@ -3,23 +3,25 @@
 #include <sys/socket.h>
 #include "utility.c"
 #include "crypto.c"
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 
 void get_online_user (int sock){
-
+	//COMPLETARE
 }
 
 
 void handle_send_request(int sock){
-
+	//COMPLETARE
 }
 
 void handle_logout(int sock){
-
+	//COMPLETARE
 }
 
 X509* getServerCertificate (){
-	/*///GET THE CERTIFICATE FROM PEM FILE
+	///GET THE CERTIFICATE FROM PEM FILE
 	X509* cert;
 	FILE* file = fopen("server.pem", "r");
 	if(!file){
@@ -33,7 +35,7 @@ X509* getServerCertificate (){
 	}
 	fclose(file); 
 	return cert;
-	*/
+	
 }
 
 
@@ -42,7 +44,7 @@ int handle_auth(int sock){
 	char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
 	
-	/*X509* cert = getServerCertificate();
+	X509* cert = getServerCertificate();
 
 	//Send a certification over a socket
 
@@ -55,15 +57,20 @@ int handle_auth(int sock){
 
 	//Generate msg
 	
-	send_obj(sock, cert_buf, cert_size);
-	send_obj(sock, myNonce, DIM_NONCE);
+	size_t size_msg = cert_size + DIM_NONCE + 1;
+	char msg[size_msg];
+	strncat(msg, myNonce, DIM_NONCE);
+	strncat(msg, cert_buf, cert_size);
+	
 	OPENSSL_free(cert_buf);
+	send_obj(sock, msg, size_msg);
+	
+	
+	char* signed_nonce =;//receive(sock, size); //NON COSI' DA RIVEDERE
+	bool ret =verifySignature(myNonce, signed_nonce);
+	//CONTINUARE
 
-	client_cert = receive(sock);
-	signed_nonce = receive(sock);
-	bool ret =verifyClientIdentity(client_cert, signed_nonce);
-
-	*/
+	
 
 }
 
