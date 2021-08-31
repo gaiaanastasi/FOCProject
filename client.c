@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <openssl/x509.h>
 #include "crypto.c"
 #include "utility.c"
 
@@ -11,10 +12,15 @@ const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1"
 const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type: \n (1) to see who's online \n (2) to send a request to talk (3) to log out\n\n What do you want to do? ";
 
-int main(){
+int main(int argc, const char** argv){
 	int socket;
 	size_t command;			//command typed by the user
-	char myNonce[DIM_NONCE];	//it will store the nonce created by the client
+	char* message_recv;
+	char* message_send;
+	char serverNonce[DIM_NONCE];
+	X509* serverCertificate = NULL;
+	char* opBuffer; 		//buffer used for different operations
+	int dimOpBuffer = 0;	//length of the content of opBuffer	
 
 	//socket creation and instantiation
 	socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -29,7 +35,22 @@ int main(){
 	}
 
 	//authentication with the server
-	generateNonce(myNonce);
+	message_recv = receive_obj(socket, &dimOpBuffer);
+	serverNonce = extract_data_from_array(message_recv, 0, DIM_NONCE);
+	if(serverNonce == NULL){
+		perror("Error during the extraction of the nonce of the server\n");
+		exit(-1);
+	}
+	opBuffer = extract_data_from_array(message_recv, DIM_NONCE, dimOpBuffer);	//opBuffer will contain the serialized certificate of the server
+	if(opBuffer == NULL){
+		perror("Error during the extraction of the certificate of the server\n");
+		exit(-1);
+	}
+	serverCertificate = d2i_X509(NULL, &opBuffer, dimOpBuffer - DIM_NONCE);
+	if(serverCertificate == NULL){
+		perror("Error during deserialization of the certificate of the server\n");
+		exit(-1);
+	}
 	
 	printf("%s", welcomeMessage);
 	while(1){
