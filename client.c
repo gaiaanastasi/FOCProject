@@ -13,7 +13,7 @@ const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type:
 
 int main(){
 	int socket;
-	unsigned command;			//command tyoed by the user
+	size_t command;			//command typed by the user
 	char myNonce[DIM_NONCE];	//it will store the nonce created by the client
 
 	//socket creation and instantiation
@@ -30,8 +30,7 @@ int main(){
 
 	//authentication with the server
 	generateNonce(myNonce);
-
-
+	
 	printf("%s", welcomeMessage);
 	while(1){
 		if(scanf("%d", &command) =! 1){

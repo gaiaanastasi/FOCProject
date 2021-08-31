@@ -41,3 +41,21 @@ void send_str (int sock, char* buf){
 		exit(-1);
 	}
 }
+
+void send_obj (int sock, char* buf, size_t len){		
+//Funzione utilizzata per inviare oggetti via socket
+	uint32_t dim_obj = htonl(len);
+	ssize_t no_err;
+	//Invio al socket la lunghezza della stringa
+	no_err = send (sock, &dim_obj, sizeof(uint32_t), 0);		
+	if(no_err == -1 || no_err < sizeof(uint32_t)){
+		perror("send lunghezza dell'oggetto");	
+		exit(-1);
+	}
+	//Invio al socket la stringa vera e propria
+	no_err = send(sock,(void*)buf,len+1, 0 );
+	if(no_err == -1){
+		perror("send");	
+		exit(-1);
+	}
+}
