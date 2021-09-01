@@ -74,9 +74,16 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 }
 
 //return true if the sum between the two elements doesn't cause overflow
-bool sumControl(int a, int b){
+void sumControl(int a, int b){
 	if (a > INT_MAX - b){
 		perror("integer overflow");
 		exit(-1);
 	}
+}
+
+void concat2Elements(char* dest, char* src1, char* src2, int len1, int len2){
+	sumControl(len1, len2);
+	memset(dest, 0, len1 + len2);
+	memcpy(dest, src1, len1);
+	memcpy(dest + len1, src2, len2);
 }

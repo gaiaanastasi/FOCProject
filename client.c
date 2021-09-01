@@ -25,6 +25,8 @@ int main(int argc, const char** argv){
 	int recv_len = 0;		//length of the received message
 	char* message_send;
 	int send_len = 0;		//length of the message to be sent
+	char* ciphertext;		//result of the encryption of the message that has to be sent
+	int cpt_len = 0;		//length of the cyphertext
 	char serverNonce[DIM_NONCE];
 	X509* serverCertificate = NULL;
 	X509* CACertificate = NULL;
@@ -175,17 +177,14 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
-	
 	dimOpBuffer = DIM_NONCE + DIM_USERNAME;
 	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
-	memcpy(opBuffer, serverNonce, DIM_NONCE);
-	memcpy(opBuffer + DIM_NONCE, username, DIM_USERNAME);
+	concat2Elements(opBuffer, serverNonce, username, DIM_NONCE, DIM_USERNAME);
 	signature = (char*)malloc(EVP_PKEY_size(myPrivK));
 	signatureFunction(opBuffer, dimOpBuffer, signature, &signatureLen, myPrivK);
 	send_len = dimOpBuffer + signatureLen;
 	message_send = (char*) malloc(send_len);
-	memcpy(message_send, opBuffer, dimOpBuffer);
-	memcpy(message_send + opBuffer, signature, signatureLen);
+	concat2Elements(message_send, opBuffer, signature, dimOpBuffer, signatureLen);
 
 	send_obj(socket, message_send, send_len);
 	free(message_send);
@@ -225,7 +224,8 @@ int main(int argc, const char** argv){
 	BIO_read(myBio, (void*) opBuffer, dimOpBuffer);
 	BIO_free(myBio);
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
-	
+	concat2Elements(message_send, serverNonce, opBuffer, DIM_NONCE, dimOpBuffer);
+	//devo cifrare il messaggio con pubK del server e inviarlo
 
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
