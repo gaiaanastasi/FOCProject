@@ -3,11 +3,16 @@
 #include <openssl/x509_vfy.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdio.h>
 
 #define DIM_NONCE 16
 #define DIM_USERNAME 32
 #define DIM_SUFFIX_FILE_PUBKEY 12
 #define DIM_SUFFIX_FILE_PRIVKEY 13
+#define DIM_PASSWORD 32
 
 //function that generate a nonce of DIM_NONCE bit
 void generateNonce(char* nonce){
@@ -25,8 +30,9 @@ void getUserPubKey(EVP_PKEY* pubkey, char* username){
 		exit(-1);
 	}
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY;
-	char* namefile[name_size];
-	strncat(namefile, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY-1);
+	char namefile[name_size];
+	int lim = DIM_SUFFIX_FILE_PUBKEY-1;
+	strncat(namefile, "_pubkey.pem", lim );
 	FILE* file = fopen(namefile, "r");
 	if(!file){
 		perror("Specified file doesn't exists");
@@ -39,6 +45,7 @@ void getUserPubKey(EVP_PKEY* pubkey, char* username){
 	}
 	fclose(file);
 }
+
 
 //function that return the store in signature the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
