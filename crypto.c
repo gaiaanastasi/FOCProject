@@ -1,4 +1,8 @@
 #include <openssl/rand.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
 
 #define DIM_NONCE 16
 
@@ -11,6 +15,29 @@ void generateNonce(char* nonce){
 	printf("the nonce has been generated\n");
 }
 
+//function that return the store in signature the signature for a given plaintext and in signatureLen its length
+void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
+    EVP_MD_CTX* signCtx = NULL;		//signature context
+    int ret = 0;
+    signCtx = EVP_MD_CTX_new();
+	ret = EVP_SignInit(signCtx, EVP_sha256());
+	if(ret == 0){
+		perror("Error during signInit()\n");
+	}
+	//the plaintext is not big, so we can have only one update
+	ret = EVP_SignUpdate(signCtx, plaintext, dimpt);
+	if(ret == 0){
+		perror("Error during signUpdate()\n");
+		exit(-1);
+	}
+	ret = EVP_SignFinal(signCtx, signature, signatureLen, myPrivK);
+	if(ret == 0){
+		perror("Error during signFinal()\n");
+		exit(-1);
+	}
+	EVP_MD_CTX_free(signCtx);
+    return;
+}
 
 bool verifySignature (char* signed_msg){
 	//SISTEMARE
