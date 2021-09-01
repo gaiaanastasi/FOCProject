@@ -73,15 +73,10 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 	}
 }
 
-//serialize pub key in PEM format and send it trough the socket
-void serialize_and_sendPubKey(int socket, EVP_PKEY* key){
-	BIO* myBio;
-	int len;
-	char* buffer;
-	myBio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PUBKEY(myBio, key);
-	buffer = NULL;
-	len = BIO_get_mem_data(myBio, &buffer);
-	send_obj(socket, buffer, len);
-	BIO_free(myBio);
+//return true if the sum between the two elements doesn't cause overflow
+bool sumControl(int a, int b){
+	if (a > INT_MAX - b){
+		perror("integer overflow");
+		exit(-1);
+	}
 }

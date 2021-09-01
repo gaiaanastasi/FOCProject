@@ -174,7 +174,8 @@ int main(int argc, const char** argv){
 	free(message_recv);
 	recv_len = 0;
 
-	//creation of the message that has to be sent to the server (client authentication)
+	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
+	
 	dimOpBuffer = DIM_NONCE + DIM_USERNAME;
 	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
 	memcpy(opBuffer, serverNonce, DIM_NONCE);
@@ -215,7 +216,15 @@ int main(int argc, const char** argv){
 	EVP_PKEY_CTX_free(DHctx);
 	EVP_PKEY_free(DHparams);
 
-	serialize_and_sendPubKey(socket, dhPrivateKey);
+	//SERIALIZATION OF THE PUBLIC KEY
+	myBio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(myBio, key);
+	opBuffer = NULL;
+	dimOpBuffer = BIO_get_mem_data(myBio, &buffer);
+	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
+	BIO_read(myBio, (void*) opBuffer, dimOpBuffer);
+	BIO_free(myBio);
+	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
 	
 
 	//now that we have a symmetric key, some informations are useless
