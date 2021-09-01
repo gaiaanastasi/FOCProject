@@ -49,7 +49,7 @@ void send_obj (int sock, char* buf, size_t len){
 		exit(-1);
 	}
 	//Invio al socket la stringa vera e propria
-	no_err = send(sock,(void*)buf,len+1, 0 );
+	no_err = send(sock,(void*)buf,len, 0 );
 	if(no_err == -1){
 		perror("send");	
 		exit(-1);
@@ -69,9 +69,23 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 		perror("integer overflow");
 		return;
 	}
-	char buffer[end-start];
 	for(i = start; i < end; i++){
-		buffer[j] = src[i];
+		dest[j] = src[i];
 		j++;
 	}
+}
+
+//return true if the sum between the two elements doesn't cause overflow
+void sumControl(int a, int b){
+	if (a > INT_MAX - b){
+		perror("integer overflow");
+		exit(-1);
+	}
+}
+
+void concat2Elements(char* dest, char* src1, char* src2, int len1, int len2){
+	sumControl(len1, len2);
+	memset(dest, 0, len1 + len2);
+	memcpy(dest, src1, len1);
+	memcpy(dest + len1, src2, len2);
 }
