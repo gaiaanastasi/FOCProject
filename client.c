@@ -215,7 +215,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY_CTX_free(DHctx);
 	EVP_PKEY_free(DHparams);
 
-	dimOpBuffer = serialize_and_sendPubKey(socket, dhPrivateKey);
+	serialize_and_sendPubKey(socket, dhPrivateKey);
 	
 
 	//now that we have a symmetric key, some informations are useless

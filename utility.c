@@ -83,4 +83,5 @@ void serialize_and_sendPubKey(int socket, EVP_PKEY* key){
 	buffer = NULL;
 	len = BIO_get_mem_data(myBio, &buffer);
 	send_obj(socket, buffer, len);
+	BIO_free(myBio);
 }
