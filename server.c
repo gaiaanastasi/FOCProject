@@ -1,6 +1,9 @@
 //CLIENT
 
 #include <sys/socket.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <netinet/in.h>
 #include "utility.c"
 #include "crypto.c"
 #include <openssl/x509.h>

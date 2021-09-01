@@ -1,4 +1,8 @@
 //UTILITY FILE
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 int receive_len (int socket_com){
 //Funzione per ricevere dimensione del messaggio da ricevere via socket
