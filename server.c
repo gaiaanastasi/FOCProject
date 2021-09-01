@@ -8,6 +8,10 @@
 #include "crypto.c"
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 
 void get_online_user (int sock){
@@ -51,8 +55,8 @@ int handle_auth(int sock){
 
 	//Send a certification over a socket
 
-	unsigned_char* cert_buf = NULL;
-	unsigned int cert_size = id2_X509(cert, &cert_buf);
+	unsigned char* cert_buf = NULL;
+	unsigned int cert_size = i2d_X509(cert, &cert_buf);
 	if(cert_size < 0) {
 		perror("certificate size error");
 		exit(-1);
@@ -73,23 +77,23 @@ int handle_auth(int sock){
 	send_obj(sock, msg, size_msg);
 	
 	//Receive signed nonce from client
-	int signed_size = receive_len(i);
+	int signed_size = receive_len(sock);
 	if (signed_size > INT_MAX - 1){
 		perror("integer overflow");
 		exit(-1);
 	}
-	char* signed_msg[signed_size];
-	receive(sock, signed_msg, signed_size); 
+	char signed_msg[signed_size];
+	receive_obj(sock, signed_msg, signed_size); 
 	
 	//Get the nonce and the username from the message I have received
-	char* get_username[DIM_USERNAME];
+	char get_username[DIM_USERNAME];
 	extract_data_from_array(signed_msg, get_username, 0, DIM_USERNAME);
 	if(signed_size < INT_MIN + DIM_USERNAME){
 		perror("nteger overflow");
 		exit(-1);	
 	}
 	int signed_nonce_size = signed_size - DIM_USERNAME;
-	char* signed_nonce[signed_nonce_size];
+	char signed_nonce[signed_nonce_size];
 	extract_data_from_array(signed_msg, signed_nonce, DIM_USERNAME, signed_size);
 	
 	//Get the public key from pem file
@@ -99,7 +103,7 @@ int handle_auth(int sock){
 	//Signature verification
 	bool ret =verifySignature(signed_msg, myNonce, signed_nonce_size, DIM_NONCE, pubkey);
 	if (ret){
-		printf("%s authentication succeded!", username);
+		printf("%s authentication succeded!", get_username);
 
 	}
 	else {
@@ -183,7 +187,7 @@ int main (int argc, const char** argv){
 					}
 					FD_SET(socket_com, &master);	//Add the new socket to the main set
 					if (socket_com > socket_ascolto) fdmax = socket_com;
-					handle_auth(sock_com);
+					handle_auth(socket_com);
 					
 				}
 				else{	//It's not socket_ascolto, it's another one
@@ -197,7 +201,7 @@ int main (int argc, const char** argv){
 						
 						
 						
-						while(1){
+						/*while(1){
 						
 							char* command = ricevi_stringa(socket_com);
 							printf("Ho ricevuto: %s \n", command); 
@@ -211,7 +215,7 @@ int main (int argc, const char** argv){
                                 handle_logout(i);
 							}
 							
-						}
+						}*/
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
 						exit(-1);

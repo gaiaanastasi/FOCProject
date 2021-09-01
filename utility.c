@@ -3,6 +3,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 int receive_len (int socket_com){
 //Funzione per ricevere dimensione del messaggio da ricevere via socket
@@ -15,15 +19,15 @@ int receive_len (int socket_com){
 	}
 	//Ricevo la dimensione del messaggio
 	int dim_buf = ntohl(dim_network);
-	(if dim_buf <= 0){
+	if( dim_buf <= 0){
 		perror("recv message length not acceptable");
-		exit(-1)
+		exit(-1);
 	}
 	return dim_buf;
 }
 
 void receive_obj (int socket_com, char* buf, int dim_buf){
-	no_err = recv(socket_com, buf, dim_buf, MSG_WAITALL);
+	ssize_t no_err = recv(socket_com, buf, dim_buf, MSG_WAITALL);
 	
 	if (no_err < dim_buf || no_err == -1){
 		perror("recv");
@@ -56,9 +60,14 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 	int i,j;
 	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
 		perror("wrong parameters");
-		return NULL;
+		return;
 	}
 	j = 0;
+	if (end < INT_MIN + start){
+		perror("integer overflow");
+		return;
+	}
+	char buffer[end-start];
 	for(i = start; i < end; i++){
 		buffer[j] = src[i];
 		j++;
