@@ -74,6 +74,7 @@ int main(int argc, const char** argv){
 	charPointer = strchr(password, '\n');
 	if(charPointer)
 		*p = '\0';
+	
 	//loading private key
 	strcpy(fileName, username);
 	strcat(fileName, "_privkey.pem");
@@ -88,6 +89,7 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	fclose(file);
+
 	//loading public key
 	strcpy(fileName, username);
 	strcat(fileName, "pubkey.pem");

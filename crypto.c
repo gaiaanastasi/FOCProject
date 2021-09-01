@@ -19,7 +19,7 @@ void generateNonce(char* nonce){
 }
 
 
-void getUserPubKey(EVP_PKEY* pubkey, username){
+void getUserPubKey(EVP_PKEY* pubkey, char* username){
 	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PUBKEY){
 		perror("integer overflow");
 		exit(-1);
@@ -35,6 +35,30 @@ void getUserPubKey(EVP_PKEY* pubkey, username){
 	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
 	if (!pubkey){
 		perror("Pubkey not found");
+		exit(-1);
+	}
+	fclose(file);
+}
+
+void getPrivK(EVP_PKEY* myPrivk, char* username){
+	char* fileName;
+	int name_size;
+	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PRIVKEY){
+		perror("integer overflow");
+		exit(-1);
+	}
+	name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PRIVKEY;
+	fileName = malloc(name_size * sizeof(char));
+	strcpy(fileName, username);
+	strcat(fileName, "_privkey.pem");
+	file = fopen(fileName, "r");
+	if(file == NULL){
+		perror("Error during the opening of a file\n");
+		exit(-1);
+	}
+	myPrivK = PEM_read_PrivateKey(file, NULL, NULL, password);
+	if(myPrivK == NULL){
+		perror("Error during the loading of the private key, maybe wrong password?\n");
 		exit(-1);
 	}
 	fclose(file);
