@@ -40,31 +40,6 @@ void getUserPubKey(EVP_PKEY* pubkey, char* username){
 	fclose(file);
 }
 
-void getPrivK(EVP_PKEY* myPrivk, char* username){
-	char* fileName;
-	int name_size;
-	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PRIVKEY){
-		perror("integer overflow");
-		exit(-1);
-	}
-	name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PRIVKEY;
-	fileName = malloc(name_size * sizeof(char));
-	strcpy(fileName, username);
-	strcat(fileName, "_privkey.pem");
-	file = fopen(fileName, "r");
-	if(file == NULL){
-		perror("Error during the opening of a file\n");
-		exit(-1);
-	}
-	myPrivK = PEM_read_PrivateKey(file, NULL, NULL, password);
-	if(myPrivK == NULL){
-		perror("Error during the loading of the private key, maybe wrong password?\n");
-		exit(-1);
-	}
-	fclose(file);
-}
-
-
 //function that return the store in signature the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
     EVP_MD_CTX* signCtx = NULL;		//signature context
@@ -154,24 +129,17 @@ static DH *get_dh2048(void)
     return dh;
 }
 
-//function that generate a Diffie-Hellman private key
-void generateDHPrivateKey(dhPrivateKey){
+//function that generate Diffie-Hellman low level parameters in a EVP_PKEY variable
+void generateDHParams(EVP_PKEY* params){
 	int ret;
-	EVP_PKEY* params;	//DH parameters
-	EVP_PKEY* DHkey;	//it will contain DH couple of keys
-	EVP_PKEY_CTX* DHctx;	//DH context
 	DH* temp = get_dh2048();
-	params = EVP_PKEY_new();
-	if(params == NULL){
-		perror("Error during instantiation of DH parameters\n");
-		exit(-1);
-	}
 	ret = EVP_PKEY_set1_DH(params, temp);
 	if(ret != 1){
 		perror("Error during the copy of the low level DH parameters\n");
 		exit(-1);
 	}
 	DH_free(temp);
+}
 	DHctx = EVP_PKEY_CTX_new(params, NULL);
 	if(DHctx == NULL){
 		perror("Error during the allocation of the context for DH key generation\n");
@@ -182,11 +150,30 @@ void generateDHPrivateKey(dhPrivateKey){
 		perror("Error during initialization of the context for DH key generation\n");
 		exit(-1);
 	}
-	ret = EVP_PKEY_keygen(DHctx, &DHkey);
+	ret = EVP_PKEY_keygen(DHctx, &dhPrivateKey);
 	if(ret != 1){
 		perror("Error during generation of Diffie-Hellman key\n");
 		exit(-1);
 	}
-	return DHkey;
 }
 
+//return true if the certificate is verified by means of the store
+bool verifyCertificate(X509_STORE* certStore, X509* certificate){
+	X509_STORE_CTX* storeCtx = X509_STORE_CTX_new();
+	if(storeCtx == NULL){
+		perror("Error during the creation of the context for certificate verification\n");
+		exit(-1);
+	}
+	ret = X509_STORE_CTX_init(storeCtx, certStore, certificate, NULL);
+	if(ret != 1){
+		perror("Error during the initilization of the certificate-verification context");
+		exit(-1);
+	}
+	ret = X509_verify_cert(storeCtx);
+	if(ret != 1){
+		perror("The certificate of the server can not be verified\n");
+		exit(-1);
+	}
+	X509_STORE_CTX_free(storeCtx);
+	return true;
+}
