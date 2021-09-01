@@ -6,11 +6,15 @@ int receive_len (int socket_com){
 	uint32_t dim_network;
 	no_err = recv(socket_com, &dim_network, sizeof(uint32_t), MSG_WAITALL);
 	if (no_err < sizeof(uint32_t) || no_err == -1 ){
-		perror("recv lunghezza del messaggio:");
-		exit(0);		
+		perror("recv message length");
+		exit(-1);		
 	}
 	//Ricevo la dimensione del messaggio
 	int dim_buf = ntohl(dim_network);
+	(if dim_buf <= 0){
+		perror("recv message length not acceptable");
+		exit(-1)
+	}
 	return dim_buf;
 }
 
@@ -19,7 +23,7 @@ void receive_obj (int socket_com, char* buf, int dim_buf){
 	
 	if (no_err < dim_buf || no_err == -1){
 		perror("recv");
-		exit(0);		
+		exit(-1);		
 	}
 }
 

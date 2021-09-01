@@ -1,6 +1,9 @@
 #include <openssl/rand.h>
 
 #define DIM_NONCE 16
+#define DIM_USERNAME 32
+#define DIM_SUFFIX_FILE_PUBKEY 12
+#define DIM_SUFFIX_FILE_PRIVKEY 13
 
 //function that generate a nonce of DIM_NONCE bit
 void generateNonce(char* nonce){
@@ -11,10 +14,40 @@ void generateNonce(char* nonce){
 	printf("the nonce has been generated\n");
 }
 
+void getUserPubKey(EVP_PKEY* pubkey, username){
+	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PUBKEY){
+		perror("integer overflow");
+		exit(-1);
+	}
+	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY;
+	char* namefile[name_size];
+	strncat(namefile, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY-1);
+	FILE* file = fopen(namefile, "r");
+	if(!file){
+		perror("Specified file doesn't exists");
+		exit(-1);
+	}
+	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
+	if (!pubkey){
+		perror("Pubkey not found");
+		exit(-1);
+	}
+	fclose(file);
+}
 
-bool verifySignature (char* signed_msg){
-	//SISTEMARE
-	return false;
+
+bool verifySignature (char* signed_msg,  char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
+	
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	EVP_VerifyInit(ctx, EVP_sha256());
+	EVP_VerifyUpdate (ctx, unsigned_msg, unsigned_size);
+	int ret = EVP_VerifyFinal(ctx, signed_msg, signed_size, pubkey);
+	if (ret !=1 ){
+		perror("authentication error");
+		exit(-1);
+	}
+	EVP_MD_CTX_free(ctx);
+	return true;
 }
 
 //function that return Diffie-Hellman low level parameters

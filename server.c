@@ -23,15 +23,15 @@ void handle_logout(int sock){
 X509* getServerCertificate (){
 	///GET THE CERTIFICATE FROM PEM FILE
 	X509* cert;
-	FILE* file = fopen("server.pem", "r");
+	FILE* file = fopen("server_cert.pem", "r");
 	if(!file){
 		perror("fopen");
-		exit(0);
+		exit(-1);
 	}
 	cert = PEM_read_X509(file, NULL, NULL, NULL);
 	if(!cert) {
 		perror("certificate not found");
-		exit(0);
+		exit(-1);
 	}
 	fclose(file); 
 	return cert;
@@ -52,10 +52,14 @@ int handle_auth(int sock){
 	unsigned int cert_size = id2_X509(cert, &cert_buf);
 	if(cert_size < 0) {
 		perror("certificate size error");
-		exit(0);
+		exit(-1);
 	}
 
 	//Generate msg
+	if (DIM_NONCE == INT_MAX || cert_size > INT_MAX - DIM_NONCE - 1){
+		perror("integer overflow");
+		exit(-1);
+	}
 	
 	size_t size_msg = cert_size + DIM_NONCE + 1;
 	char msg[size_msg];
@@ -65,12 +69,40 @@ int handle_auth(int sock){
 	OPENSSL_free(cert_buf);
 	send_obj(sock, msg, size_msg);
 	
+	//Receive signed nonce from client
+	int signed_size = receive_len(i);
+	if (signed_size > INT_MAX - 1){
+		perror("integer overflow");
+		exit(-1);
+	}
+	char* signed_msg[signed_size];
+	receive(sock, signed_msg, signed_size); 
 	
-	char* signed_nonce =;//receive(sock, size); //NON COSI' DA RIVEDERE
-	bool ret =verifySignature(myNonce, signed_nonce);
-	//CONTINUARE
+	//Get the nonce and the username from the message I have received
+	char* get_username[DIM_USERNAME];
+	extract_data_from_array(signed_msg, get_username, 0, DIM_USERNAME);
+	if(signed_size < INT_MIN + DIM_USERNAME){
+		perror("nteger overflow");
+		exit(-1);	
+	}
+	int signed_nonce_size = signed_size - DIM_USERNAME;
+	char* signed_nonce[signed_nonce_size];
+	extract_data_from_array(signed_msg, signed_nonce, DIM_USERNAME, signed_size);
+	
+	//Get the public key from pem file
+	EVP_PKEY* pubkey;
+	getUserPubKey(pubkey, get_username);
+	
+	//Signature verification
+	bool ret =verifySignature(signed_msg, myNonce, signed_nonce_size, DIM_NONCE, pubkey);
+	if (ret){
+		printf("%s authentication succeded!", username);
 
-	
+	}
+	else {
+		perror("signature verify failure");
+		exit(-1);
+	}
 
 }
 
@@ -81,7 +113,7 @@ int main (int argc, const char** argv){
 	
 	if(socket_ascolto == -1){
 		perror("Socket");
-		exit(0);
+		exit(-1);
 	}
 	else printf("Apertura del socket di ascolto \n");
 	struct sockaddr_in indirizzo_server;
@@ -106,13 +138,13 @@ int main (int argc, const char** argv){
 	ret = bind(socket_ascolto, (struct sockaddr*)&indirizzo_server, sizeof(indirizzo_server));
 	if (ret == -1){
 		perror("bind");
-		exit(0);	
+		exit(-1);	
 	}
     //socket_ascolto is the socket used for receiving connection requests
 	ret = listen(socket_ascolto, 10);
 	if (ret == -1){
 		perror("listen");
-		exit(0);
+		exit(-1);
 	}
 
 	printf("Server in ascolto \n");
@@ -144,7 +176,7 @@ int main (int argc, const char** argv){
 					//A request has arrived and I have made a new socket for the communication
 					if (ret == -1){
 						perror("accept");
-						exit(0);
+						exit(-1);
 					}
 					FD_SET(socket_com, &master);	//Add the new socket to the main set
 					if (socket_com > socket_ascolto) fdmax = socket_com;
@@ -155,7 +187,7 @@ int main (int argc, const char** argv){
 					pid_t pid = fork();
 					if (pid== -1){
 						perror ("fork");
-						exit(0);
+						exit(-1);
 					}
 					else if (pid == 0){		//I am in the child process
 						close(socket_ascolto);
@@ -179,7 +211,7 @@ int main (int argc, const char** argv){
 						}
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
-						exit(0);
+						exit(-1);
 					}
 					//Parent process
 					close(i);	//Closure socket
@@ -191,5 +223,5 @@ int main (int argc, const char** argv){
 	}
 	close(socket_ascolto);
 
-	exit(0);
+	exit(-1);
 }
