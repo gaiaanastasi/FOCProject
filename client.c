@@ -43,7 +43,9 @@ int main(int argc, const char** argv){
 	}
 
 	//authentication with the server
-	message_recv = receive_obj(socket, &recv_len);
+	recv_len = receive_len(socket);
+	message_recv = (char*) malloc(recv_len * sizeof(char));
+	receive_obj(socket, message_recv, recv_len);
 	serverNonce = (char*) malloc((DIM_NONCE) * sizeof(char));
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE, serverNonce);
 	if(serverNonce == NULL){

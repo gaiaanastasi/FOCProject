@@ -1,7 +1,7 @@
 //UTILITY FILE
 
-char* receive_obj (int socket_com, int* len){
-//Funzione per ricevere oggetti via socket
+int receive_len (int socket_com){
+//Funzione per ricevere dimensione del messaggio da ricevere via socket
 	ssize_t no_err;
 	uint32_t dim_network;
 	no_err = recv(socket_com, &dim_network, sizeof(uint32_t), MSG_WAITALL);
@@ -9,23 +9,18 @@ char* receive_obj (int socket_com, int* len){
 		perror("recv lunghezza del messaggio:");
 		exit(0);		
 	}
-	//Ricevo la dimensione della 
+	//Ricevo la dimensione del messaggio
 	int dim_buf = ntohl(dim_network);
-	
-	//Ricezione 
-	char* buf = malloc(dim_buf); 
-	if(!buf){
-		perror("malloc");
-		exit(0);
-	}
+	return dim_buf;
+}
+
+void receive_obj (int socket_com, char* buf, int dim_buf){
 	no_err = recv(socket_com, buf, dim_buf, MSG_WAITALL);
 	
 	if (no_err < dim_buf || no_err == -1){
 		perror("recv");
 		exit(0);		
 	}
-	*len = dim_buf;
-	return buf;
 }
 
 
