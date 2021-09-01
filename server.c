@@ -14,6 +14,36 @@
 #include <unistd.h>
 
 
+#define DIM_SUFFIX_FILE_PUBKEY 12
+#define DIM_SUFFIX_FILE_PRIVKEY 13
+#define DIM_PASSWORD 32
+#define DIR_SIZE 14
+#define DIR "/keys/public/"
+#define DIM_NONCE 16
+#define DIM_USERNAME 32
+
+onlineUsers* head = NULL;
+struct onlineUsers{
+	char username[DIM_USERNAME];
+	onlineUsers* next;
+};
+
+
+
+
+void updateOnlineUsersList (char* username){
+	onlineUsers* t = (onlineUsers*) malloc(sizeof(onlineUsers*));
+	t = head;
+	while (t->next){
+		t=t->next;
+	}
+	onlineUsers* new_user = (onlineUsers*) malloc(sizeof(onlineUsers*));
+	new_user->username = username;
+	new_user->next = NULL;
+	t->next = new_user;
+	free(t);
+}
+
 void get_online_user (int sock){
 	//COMPLETARE
 }
@@ -98,7 +128,33 @@ int handle_auth(int sock){
 	
 	//Get the public key from pem file
 	EVP_PKEY* pubkey;
-	getUserPubKey(pubkey, get_username);
+	if (DIR_SIZE > INT_MAX - DIM_SUFFIX_FILE_PUBKEY){
+		perror("integer overflow");
+		exit(-1);
+	}
+	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PUBKEY - DIR_SIZE){
+		perror("integer overflow");
+		exit(-1);
+	}
+	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
+	char namefile[name_size];
+	int lim = DIR_SIZE -1;
+	strncat(namefile, DIR, lim );
+	lim= DIM_USERNAME-1;
+	strncat(namefile, get_username, lim);
+	lim= DIM_SUFFIX_FILE_PUBKEY-1;
+	strncat(namefile, "_pubkey.pem", lim );
+	FILE* file = fopen(namefile, "r");
+	if(!file){
+		perror("Specified file doesn't exists");
+		exit(-1);
+	}
+	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
+	if (!pubkey){
+		perror("Pubkey not found");
+		exit(-1);
+	}
+	fclose(file);
 	
 	//Signature verification
 	bool ret =verifySignature(signed_msg, myNonce, signed_nonce_size, DIM_NONCE, pubkey);
@@ -110,6 +166,29 @@ int handle_auth(int sock){
 		perror("signature verify failure");
 		exit(-1);
 	}
+	EVP_PKEY_free(pubkey);
+	
+	//Update online users' list
+	updateOnlineUserList(get_username);
+	
+	//DHKE 
+	EVP_PKEY* params = EVP_PKEY_new();
+	generateDHParams(params);
+	
+	EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
+	EVP_PKEY* my_prvkey = NULL;
+	EVP_PKEY_keygen_init(ctx);
+	EVP_PKEY_keygen(ctx, &my_prvkey);
+	EVP_PKEY_CTX_free(ctx);
+	
+	
+	EVP_PKEY_free(my_prvkey);
+	
+	
+	
+	
+	
+	
 
 }
 

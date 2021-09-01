@@ -24,28 +24,6 @@ void generateNonce(char* nonce){
 }
 
 
-void getUserPubKey(EVP_PKEY* pubkey, char* username){
-	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PUBKEY){
-		perror("integer overflow");
-		exit(-1);
-	}
-	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY;
-	char namefile[name_size];
-	int lim = DIM_SUFFIX_FILE_PUBKEY-1;
-	strncat(namefile, "_pubkey.pem", lim );
-	FILE* file = fopen(namefile, "r");
-	if(!file){
-		perror("Specified file doesn't exists");
-		exit(-1);
-	}
-	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
-	if (!pubkey){
-		perror("Pubkey not found");
-		exit(-1);
-	}
-	fclose(file);
-}
-
 
 //function that return the store in signature the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
@@ -155,7 +133,7 @@ bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 		perror("Error during the creation of the context for certificate verification\n");
 		exit(-1);
 	}
-	ret = X509_STORE_CTX_init(storeCtx, certStore, certificate, NULL);
+	int ret = X509_STORE_CTX_init(storeCtx, certStore, certificate, NULL);
 	if(ret != 1){
 		perror("Error during the initilization of the certificate-verification context");
 		exit(-1);

@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define TOT_USERS 2
+
 int receive_len (int socket_com){
 //Funzione per ricevere dimensione del messaggio da ricevere via socket
 	ssize_t no_err;
