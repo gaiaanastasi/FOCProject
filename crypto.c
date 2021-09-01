@@ -129,7 +129,7 @@ static DH *get_dh2048(void)
     return dh;
 }
 
-//function that generate Diffie-Hellman low level parameters in a EVP_PKEY variable
+//function that generates Diffie-Hellman low level parameters in a EVP_PKEY variable
 void generateDHParams(EVP_PKEY* params){
 	int ret;
 	DH* temp = get_dh2048();
@@ -140,24 +140,8 @@ void generateDHParams(EVP_PKEY* params){
 	}
 	DH_free(temp);
 }
-	DHctx = EVP_PKEY_CTX_new(params, NULL);
-	if(DHctx == NULL){
-		perror("Error during the allocation of the context for DH key generation\n");
-		exit(-1);
-	}
-	ret = EVP_PKEY_keygen_init(DHctx);
-	if(ret != 1){
-		perror("Error during initialization of the context for DH key generation\n");
-		exit(-1);
-	}
-	ret = EVP_PKEY_keygen(DHctx, &dhPrivateKey);
-	if(ret != 1){
-		perror("Error during generation of Diffie-Hellman key\n");
-		exit(-1);
-	}
-}
 
-//return true if the certificate is verified by means of the store
+//returns true if the certificate is verified by means of the store
 bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	X509_STORE_CTX* storeCtx = X509_STORE_CTX_new();
 	if(storeCtx == NULL){

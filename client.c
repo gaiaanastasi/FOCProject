@@ -212,6 +212,8 @@ int main(int argc, const char** argv){
 		perror("Error during generation of Diffie-Hellman key\n");
 		exit(-1);
 	}	
+	EVP_PKEY_CTX_free(DHctx);
+	EVP_PKEY_free(DHparams);
 
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
@@ -234,6 +236,7 @@ int main(int argc, const char** argv){
 		}
 	}
 	EVP_PKEY_free(myPrivK);
+	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
 	return 0;
 }
