@@ -37,7 +37,6 @@ int main(int argc, const char** argv){
 	EVP_PKEY* myPubK = NULL;		//public key of the user
 	EVP_PKEY* DHparams = NULL;			//DH parameters
 	EVP_PKEY_CTX* DHctx = NULL;		//DH context
-	BIO* myBio = NULL;				//it will be used to serialize DH public key
 	char fileName[64];				//it will contain different names for different files
 	char username[DIM_USERNAME];		//username to log in
 	char password[DIM_PASSWORD];		//password to find the private key
@@ -215,7 +214,8 @@ int main(int argc, const char** argv){
 	}	
 	EVP_PKEY_CTX_free(DHctx);
 	EVP_PKEY_free(DHparams);
-	myBio = BIO_new
+
+	dimOpBuffer = serialize_and_sendPubKey(socket, dhPrivateKey);
 	
 
 	//now that we have a symmetric key, some informations are useless

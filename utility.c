@@ -47,7 +47,7 @@ void send_obj (int sock, char* buf, size_t len){
 		exit(-1);
 	}
 	//Invio al socket la stringa vera e propria
-	no_err = send(sock,(void*)buf,len+1, 0 );
+	no_err = send(sock,(void*)buf,len, 0 );
 	if(no_err == -1){
 		perror("send");	
 		exit(-1);
@@ -67,9 +67,20 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 		perror("integer overflow");
 		return;
 	}
-	char buffer[end-start];
 	for(i = start; i < end; i++){
-		buffer[j] = src[i];
+		dest[j] = src[i];
 		j++;
 	}
+}
+
+//serialize pub key in PEM format and send it trough the socket
+void serialize_and_sendPubKey(int socket, EVP_PKEY* key){
+	BIO* myBio;
+	int len;
+	char* buffer;
+	myBio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(myBio, key);
+	buffer = NULL;
+	len = BIO_get_mem_data(myBio, &buffer);
+	send_obj(socket, buffer, len);
 }
