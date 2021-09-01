@@ -22,26 +22,12 @@
 #define DIM_NONCE 16
 #define DIM_USERNAME 32
 
-onlineUsers* head = NULL;
-struct onlineUsers{
-	char username[DIM_USERNAME];
-	onlineUsers* next;
-};
 
-
+char* myNonce[DIM_NONCE];
 
 
 void updateOnlineUsersList (char* username){
-	onlineUsers* t = (onlineUsers*) malloc(sizeof(onlineUsers*));
-	t = head;
-	while (t->next){
-		t=t->next;
-	}
-	onlineUsers* new_user = (onlineUsers*) malloc(sizeof(onlineUsers*));
-	new_user->username = username;
-	new_user->next = NULL;
-	t->next = new_user;
-	free(t);
+	//COMPLETARE
 }
 
 void get_online_user (int sock){
@@ -78,7 +64,7 @@ X509* getServerCertificate (){
 
 int handle_auth(int sock){
 	//Server retrieves his certificate and generate a nonce
-	char myNonce[DIM_NONCE];
+	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
 	
 	X509* cert = getServerCertificate();
@@ -171,24 +157,7 @@ int handle_auth(int sock){
 	//Update online users' list
 	updateOnlineUserList(get_username);
 	
-	//DHKE 
-	EVP_PKEY* params = EVP_PKEY_new();
-	generateDHParams(params);
-	
-	EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
-	EVP_PKEY* my_prvkey = NULL;
-	EVP_PKEY_keygen_init(ctx);
-	EVP_PKEY_keygen(ctx, &my_prvkey);
-	EVP_PKEY_CTX_free(ctx);
-	
-	
-	EVP_PKEY_free(my_prvkey);
-	
-	
-	
-	
-	
-	
+		
 
 }
 
@@ -278,7 +247,103 @@ int main (int argc, const char** argv){
 					else if (pid == 0){		//I am in the child process
 						close(socket_ascolto);
 						
+						//EDHKE
+						EVP_PKEY* params = EVP_PKEY_new();
+						if(params == NULL){
+							perror("Error during instantiation of DH parameters\n");
+							exit(-1);
+						}
+						generateDHParams(params);
 						
+						EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
+						if(DHctx == NULL){
+							perror("Error during the allocation of the context for DH key generation\n");
+							exit(-1);
+						}
+						EVP_PKEY* my_prvkey = NULL;
+						EVP_PKEY_keygen_init(ctx);
+						if(ret != 1){
+							perror("Error during initialization of the context for DH key generation\n");
+							exit(-1);
+						}
+						EVP_PKEY_keygen(ctx, &my_prvkey);
+						if(ret != 1){
+							perror("Error during generation of Diffie-Hellman key\n");
+							exit(-1);
+						}	
+						EVP_PKEY_CTX_free(ctx);
+						
+						//Serialize the key to send that over socket
+						BIO* mbio = BIO_new(BIO_s_mem());
+						if (!mbio){
+							perror("Error in BIO allocation \n");
+							exit(-1);
+						} 
+						PEM_write_bio_PUBKEY(mbio, my_prvkey);
+						char* pubkey_buf = NULL;
+						long pubkey_size = BIO_get_mem_data(mbio, &pubkey_buf);
+						
+						//DEVO CONCATENARCI IL NONCE E CIFRARE CON LA CHIAVE PUBBLICA DEL CLIENT
+						
+						send_obj (/*finire*/);
+						free(mbio);
+						
+						
+						//Receive the response from the client
+						long complete_msg_size = (long) receive_len (i);
+						unsigned char* client_message = (unsigned char*) malloc (complete_msg_size);
+						receive_obj(i, client_message, complete_msg_size);
+						
+						//DECIFRO RISPOSTA CON LA CHIAVE PRIVATA SERVER
+						
+						
+						
+						if(!checkNonce(myNonce, receiveNonce)){
+							perror("The session isn't fresh \n");
+						}
+						
+						BIO* mbio = BIO_new (BIO_s_mem());
+						if (!mbio){
+							perror("Error in BIO allocation \n");
+							exit(-1);
+						} 
+						BIO_write(mbio, client_pubkey, client_key_size);
+						EVP_PKEY* client_key = PEM_read_bio_PUBKEY(mbio, NULL, NULL, NULL);
+						BIO_free(mbio);
+						
+						//Secret Derivation
+						EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
+						if(DHctx == NULL){
+							perror("Error during the allocation of the context for DH secret derivation\n");
+							exit(-1);
+						}
+						EVP_PKEY* client_pubkey = NULL;
+						EVP_PKEY_derive_init(ctx);
+						if(ret != 1){
+							perror("Error during initialization of the context for DH key derivation\n");
+							exit(-1);
+						}
+						EVP_PKEY_derive_set_peer(ctx, client_pubkey);
+						if(ret != 1){
+							perror("Error during derive_set_peer\n");
+							exit(-1);
+						}	
+						unsigned char* session_key;
+						size_t secretlen;
+						EVP_PKEY_derive(ctx, NULL, &secretlen);
+						if(ret != 1){
+							perror("Error during derivation of secret length\n");
+							exit(-1);
+						}
+						session_key = (unsigned char*) malloc (secretlen);
+						EVP_PKEY_derive(ctx, session_key, &secretlen);
+						if(ret != 1){
+							perror("Error during derivation of session key\n");
+							exit(-1);
+						}
+						EVP_PKEY_CTX_free(ctx);
+						EVP_PKEY_free(my_prvkey);
+						EVP_PKEY_free(client_pubkey);
 						
 						/*while(1){
 						
