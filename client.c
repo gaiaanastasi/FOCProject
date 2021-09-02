@@ -46,7 +46,6 @@ int main(int argc, const char** argv){
 	EVP_PKEY* myPubK = NULL;		//public key of the user
 	EVP_PKEY* DHparams = NULL;			//DH parameters
 	EVP_PKEY_CTX* DHctx = NULL;		//DH context
-	EVP_CIPHER* cipher = NULL;		//cipher currently used
 	char fileName[64];				//it will contain different names for different files
 	char username[DIM_USERNAME];		//username to log in
 	char password[DIM_PASSWORD];		//password to find the private key
@@ -103,7 +102,7 @@ int main(int argc, const char** argv){
 	fclose(file);
 
 	//LOADING PUBLIC KEY
-	strcpy(fieName, "keys/");
+	strcpy(fileName, "keys/");
 	strcat(fileName, username);
 	strcat(fileName, "_pubkey.pem");
 	file = fopen(fileName, "r");
@@ -247,37 +246,17 @@ int main(int argc, const char** argv){
 	dimOpBuffer = 0;
 
 	//asymmetric encryption
-	cipher = EVP_aes_128_cbc();
-	encrypted_key_len = EVP_PKEY_size(serverPubK);
-	iv_len = EVP_CIPHER_iv_length(cipher);
-	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
-	iv = (unsigned char*) malloc(iv_len);
-	sumControl(pt_len, EVP_CIPHER_block_size(cipher));
-	ciphertext = (unsigned char*) malloc(pt_len + EVP_CIPHER_block_size(cipher));
-	if(!iv || !encrypted_key || !ciphertext){
-		perror("Error during malloc\n");
+	message_send = from_pt_to_DigEnv(plaintext, pt_len, serverPubK, &send_len);
+	if(message_send == NULL){
+		perror("Error during the asymmetric encryption\n");
 		exit(-1);
 	}
-	if(!createDigitalEnvelope(cipher, plaintext, pt_len, encrypted_key, encrypted_key_len, iv, iv_len, ciphertext, &cpt_len, serverPubK)){
-		perror("Error during creation of the digital envelope\n");
-		exit(-1);
-	}
-	sumControl(encrypted_key_len, iv_len);
-	dimOpBuffer = encrypted_key_len + iv_len;
-	opBuffer = (unsigned char*) malloc(dimOpBuffer);
-	concat2Elements(opBuffer, encrypted_key, iv, encrypted_key_len, iv_len);
-	sumControl(dimOpBuffer, cpt_len);
-	send_len = dimOpBuffer + cpt_len;
-	message_send = (unsigned char*) malloc(send_len);
-	concat2Elements(message_send, opBuffer, ciphertext, dimOpBuffer, cpt_len);
 	// <encrypted_key> | <IV> | <ciphertext>
 	send_obj(socket, message_send, send_len);
 
+	//plaintext already freed by from_pt_to_DigEnv()
 	free(message_send);
-	free(iv);
-	free(encrypted_key);
-	free(ciphertext);
-	EVP_CIPHER_free(cipher);
+	send_len = 0;
 
 	//Receiving DH public key of the server 
 	recv_len = receive_len(socket);
@@ -285,31 +264,11 @@ int main(int argc, const char** argv){
 	receive_obj(socket, message_recv, recv_len);
 
 	//asymmetric decryption
-	cipher = EVP_aes_128_cbc();
-	encrypted_key_len = EVP_PKEY_size(myPrivK);
-	iv_len = EVP_CIPHER_iv_length(cipher);
-	sumControl(encrypted_key_len, iv_len);
-	//check for correct format of the encrypted file
-	if(recv_len < encrypted_key_len + iv_len){
-		perror("Encrypted file with wrong format\n");
+	plaintext = from_DigEnv_to_PlainText(message_recv, recv_len, &pt_len, myPrivK);
+	if(plaintext == NULL){
+		perror("Error during the asimmetric decryption\n");
 		exit(-1);
 	}
-	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
-	iv = (unsigned char*) malloc(iv_len);
-	cpt_len = recv_len - encrypted_key_len - iv_len;	//possible overflow already controlled
-	ciphertext = (unsigned char*) malloc(cpt_len);
-	plaintext = (unsigned char*) malloc(cpt_len);
-	if(!iv || !encrypted_key || !ciphertext || !plaintext){
-		perror("Error during malloc\n");
-		exit(-1);
-	}
-	extract_data_from_array(encrypted_key, message_recv, 0, encrypted_key_len);
-	extract_data_from_array(iv, message_recv, encrypted_key_len, iv_len);
-	extract_data_from_array(ciphertext, message_recv, encrypted_key_len + iv_len, cpt_len);
-	asymmetricDecryption(cipher, plaintext, &pt_len, encrypted_key, encrypted_key_len, iv, iv_len, ciphertext, cpt_len, myPrivK);
-	free(encrypted_key);
-	free(iv);
-	free(ciphertext);
 
 	//check of the nonce
 	dimOpBuffer = DIM_NONCE;
@@ -321,7 +280,7 @@ int main(int argc, const char** argv){
 	}
 	free(opBuffer);
 	dimOpBuffer = 0;
-
+	//devo derivare segreto (gia fatta la funzione)
 
 	//now that we have a fresh symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);

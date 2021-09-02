@@ -149,35 +149,66 @@ bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	return true;
 }
 
-//function that stores the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
-bool createDigitalEnvelope(EVP_CIPHER* cipher, unsigned char* pt, int pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int* cpt_len, EVP_PKEY* pubkey){
+//function that takes a plaintext and returns a message formatted like { <encrypted_key> | <IV> | <ciphertext> } in an asimmetric encryption
+unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey, int* dimM){
 	int ret;
+	int dimB = 0;
+	unsigned char* encrypted_key;
+	unsigned char* iv;
+	unsigned char* ciphertext;
+	int encrypted_key_len, iv_len, cpt_len;
+	unsigned char* buffer = NULL;
+	unsigned char* message = NULL;
 	int nc = 0;		//bytes encrypted at each chunk
 	int nctot = 0;	//total encrypted bytes
+	EVP_CIPHER* cipher = EVP_aes_128_cbc();
+	encrypted_key_len = EVP_PKEY_size(pubkey);
+	iv_len = EVP_CIPHER_iv_length(cipher);
+	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
+	iv = (unsigned char*) malloc(iv_len);
+	sumControl(pt_len, EVP_CIPHER_block_size(cipher));
+	ciphertext = (unsigned char*) malloc(pt_len + EVP_CIPHER_block_size(cipher));
+	if(!iv || !encrypted_key || !ciphertext)
+		return NULL;
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
-		return false;
-	ret = EVP_SealInit(ctx, cipher, (unsigned char**)&encrypted_key, &encrypted_key_len, (unsigned char*)iv, &pubkey, 1);
+		return NULL;
+	ret = EVP_SealInit(ctx, cipher, &encrypted_key, &encrypted_key_len, iv, &pubkey, 1);
 	if(ret < 0)
-		return false;
-	ret = EVP_SealUpdate(ctx, (unsigned char*) cpt, &nc, (unsigned char*)pt, pt_len);
+		return NULL;
+	ret = EVP_SealUpdate(ctx, ciphertext, &nc, pt, pt_len);
 	if(ret == 0)
-		return false;
+		return NULL;
 	nctot += nc;
-	ret = EVP_SealFinal(ctx, (unsigned char*)cpt + nctot, &nc);
+	ret = EVP_SealFinal(ctx, ciphertext + nctot, &nc);
 	if(ret == 0)
-		return false;
+		return NULL;
 	nctot += nc;
-	*cpt_len = nctot;
+	cpt_len = nctot;
 
 	EVP_CIPHER_CTX_free(ctx);
 #pragma optimize("", off)
    	memset(pt, 0, pt_len);
 #pragma optimize("", on)
    	free(pt);
-   	return true;
+	EVP_CIPHER_free(cipher);
+
+	//message constitution
+	sumControl(encrypted_key_len, iv_len);
+	dimB = encrypted_key_len + iv_len;
+	buffer = (unsigned char*) malloc(dimB);
+	concat2Elements(buffer, encrypted_key, iv, encrypted_key_len, iv_len);
+	sumControl(dimB, cpt_len);
+	*dimM = dimB + cpt_len;
+	message = (unsigned char*) malloc(dimM);
+	concat2Elements(message, buffer, ciphertext, dimB, cpt_len);
+	free(iv);
+	free(encrypted_key);
+	free(ciphertext);
+   	return message;
 }
 
+/*
 //function that store the plaintext, given the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
 bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int cpt_len, EVP_PKEY* prvKey){
 	int ret;
@@ -199,6 +230,58 @@ bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, un
 	ndtot += nd;
 	*pt_len = ndtot;
 	EVP_CIPHER_CTX(ctx);
+}*/
+
+//subdivide the received message (formatted { <encrypted_key> | <IV> | <ciphertext> }) into the three parts that are needed for the asymmetric decryption
+unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, int* pt_len, EVP_PKEY* prvKey){
+	int ret;
+	unsigned char* pt = NULL;
+	unsigned char* encrypted_key;
+	unsigned char* iv;
+	unsigned char* cpt;
+	int encrypted_key_len, iv_len, cpt_len;
+	int nd = 0; 	// bytes decrypted at each chunk
+   	int ndtot = 0; 	// total decrypted bytes
+	EVP_CIPHER_CTX* ctx;
+	EVP_CIPHER* cipher = EVP_aes_128_cbc();
+	encrypted_key_len = EVP_PKEY_size(privKey);
+	iv_len = EVP_CIPHER_iv_length(cipher);
+	sumControl(encrypted_key_len, iv_len);
+	//check for correct format of the encrypted file
+	if(recv_len < encrypted_key_len + iv_len)
+		return NULL;
+	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
+	iv = (unsigned char*) malloc(iv_len);
+	cpt_len = recv_len - encrypted_key_len - iv_len;	//possible overflow already controlled
+	cpt = (unsigned char*) malloc(cpt_len);
+	pt = (unsigned char*) malloc(cpt_len);
+	if(!iv || !encrypted_key || !cpt || !pt)
+		return NULL;
+	extract_data_from_array(encrypted_key, message_recv, 0, encrypted_key_len);
+	extract_data_from_array(iv, message_recv, encrypted_key_len, iv_len);
+	extract_data_from_array(cpt, message_recv, encrypted_key_len + iv_len, cpt_len);
+	//decryption
+	ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return NULL;
+	ret = EVP_OpenInit(ctx, cipher, encrypted_key, encrypted_key_len, iv, prvKey);
+	if(ret == 0)
+		return NULL;
+	ret = EVP_OpenUpdate(ctx, pt, &nd, cpt, cpt_len);
+	if(ret == 0)
+		return NULL;
+	ndtot += nd;
+	ret = EVP_OpenFinal(ctx, (pt) + ndtot, &nd);
+	if(ret == 0)
+		return NULL;
+	ndtot += nd;
+	*pt_len = ndtot;
+	EVP_CIPHER_CTX_free(ctx);
+	EVP_CIPHER_free(cipher);
+	free(encrypted_key);
+	free(iv);
+	free(ciphertext);
+	return pt;	
 }
 
 //function for symmetric encryption
@@ -240,7 +323,7 @@ bool symmetricEncryption(EVP_CIPHER* cipher, char* pt, int pt_len,  char* iv, in
 }
 
 
-//function that derive the DH shared secret and stores it into a buffer. It returns NULL in case of error
+//function that derive the DH shared secret and stores its length into a variable. It returns NULL in case of error
 unsigned char* DHSecretDerivation(EVP_PKEY* privK, EVP_PKEY* pubK, int* secretLen){
 	unsigned char* secret;
 	EVP_PKEY_CTX* derive_ctx;
