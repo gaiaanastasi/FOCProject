@@ -7,11 +7,12 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <cstring>
 
 #define TOT_USERS 2
 
 int receive_len (int socket_com){
-//Funzione per ricevere dimensione del messaggio da ricevere via socket
+//Receive the length of the message via socket
 	ssize_t no_err;
 	uint32_t dim_network;
 	no_err = recv(socket_com, &dim_network, sizeof(uint32_t), MSG_WAITALL);
@@ -19,7 +20,6 @@ int receive_len (int socket_com){
 		perror("recv message length");
 		exit(-1);		
 	}
-	//Ricevo la dimensione del messaggio
 	int dim_buf = ntohl(dim_network);
 	if( dim_buf <= 0){
 		perror("recv message length not acceptable");
@@ -29,6 +29,7 @@ int receive_len (int socket_com){
 }
 
 void receive_obj (int socket_com, char* buf, int dim_buf){
+//Receive the message via socket
 	ssize_t no_err = recv(socket_com, buf, dim_buf, MSG_WAITALL);
 	
 	if (no_err < dim_buf || no_err == -1){
@@ -39,16 +40,16 @@ void receive_obj (int socket_com, char* buf, int dim_buf){
 
 
 void send_obj (int sock, char* buf, size_t len){		
-//Funzione utilizzata per inviare oggetti via socket
+//Send the message via socket
 	uint32_t dim_obj = htonl(len);
 	ssize_t no_err;
-	//Invio al socket la lunghezza della stringa
+	//send the message length first
 	no_err = send (sock, &dim_obj, sizeof(uint32_t), 0);		
 	if(no_err == -1 || no_err < sizeof(uint32_t)){
 		perror("send lunghezza dell'oggetto");	
 		exit(-1);
 	}
-	//Invio al socket la stringa vera e propria
+	//send object
 	no_err = send(sock,(void*)buf,len, 0 );
 	if(no_err == -1){
 		perror("send");	

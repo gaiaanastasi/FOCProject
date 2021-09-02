@@ -13,12 +13,13 @@
 #define DIM_SUFFIX_FILE_PUBKEY 12
 #define DIM_SUFFIX_FILE_PRIVKEY 13
 #define DIM_PASSWORD 32
+#define AAD "0000"
 
 //function that generate a nonce of DIM_NONCE bit
 void generateNonce(char* nonce){
 	if(RAND_poll() != 1)
 		perror("error occured during RAND_poll()");
-	if(RAND_bytes(nonce, DIM_NONCE) != 1)
+	if(RAND_bytes((unsigned char*)nonce, DIM_NONCE) != 1)
 		perror("error occured during generation of the nonce");
 	printf("the nonce has been generated\n");
 }
@@ -40,7 +41,7 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
 		perror("Error during signUpdate()\n");
 		exit(-1);
 	}
-	ret = EVP_SignFinal(signCtx, signature, signatureLen, myPrivK);
+	ret = EVP_SignFinal(signCtx, (unsigned char*)signature, (unsigned int*)signatureLen, myPrivK);
 	if(ret == 0){
 		perror("Error during signFinal()\n");
 		exit(-1);
@@ -49,13 +50,13 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
     return;
 }
 
-
+//function wthat verifies the signature
 bool verifySignature (char* signed_msg,  char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
 	
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	EVP_VerifyInit(ctx, EVP_sha256());
 	EVP_VerifyUpdate (ctx, unsigned_msg, unsigned_size);
-	int ret = EVP_VerifyFinal(ctx, signed_msg, signed_size, pubkey);
+	int ret = EVP_VerifyFinal(ctx, (unsigned char*)signed_msg, signed_size, pubkey);
 	if (ret !=1 ){
 		perror("authentication error");
 		exit(-1);
@@ -155,14 +156,14 @@ bool createDigitalEnvelope(EVP_CIPHER* cipher, char* pt, int pt_len, char* encry
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
 		return false;
-	ret = EVP_SealInit(ctx, cipher, &encrypted_key, &encrypted_key_len, iv, &pubkey, 1);
+	ret = EVP_SealInit(ctx, cipher, (unsigned char**)&encrypted_key, &encrypted_key_len, (unsigned char*)iv, &pubkey, 1);
 	if(ret < 0)
 		return false;
-	ret = EVP_SealUpdate(ctx, cpt, &nc, pt, pt_len);
+	ret = EVP_SealUpdate(ctx, (unsigned char*) cpt, &nc, (unsigned char*)pt, pt_len);
 	if(ret == 0)
 		return false;
 	nctot += nc;
-	ret = EVP_SealFinal(ctx, cpt + nctot, &nc);
+	ret = EVP_SealFinal(ctx, (unsigned char*)cpt + nctot, &nc);
 	if(ret == 0)
 		return false;
 	nctot += nc;
@@ -173,4 +174,43 @@ bool createDigitalEnvelope(EVP_CIPHER* cipher, char* pt, int pt_len, char* encry
    	memset(pt, 0, pt_len);
 #pragma optimize("", on)
    	free(pt);
+   	return true;
+}
+
+//function for symmetric encryption
+bool symmetricEncryption(EVP_CIPHER* cipher, char* pt, int pt_len,  char* iv, int iv_len, char* cpt, int* cpt_len, EVP_PKEY* sessionkey){
+	
+	int ret = 0;
+	
+	int read = 0;
+	int howmany =0;
+	char* tag = (char*) malloc (16);
+
+	EVP_CIPHER_CTX* ctx;
+	ctx = EVP_CIPHER_CTX_new();
+	ret = EVP_EncryptInit(ctx, EVP_aes_128_gcm(), (unsigned char*)sessionkey, (unsigned char*)iv);
+	if (ret != 1)
+		return false;
+	ret = EVP_EncryptUpdate(ctx, NULL, &howmany, (unsigned char*)AAD, strlen(AAD));
+	while (read < pt_len - 128){
+		ret= EVP_EncryptUpdate(ctx, (unsigned char*)cpt + read, &howmany, (unsigned char*)pt + read, pt_len - read);
+		if (ret != 1)
+			return false;
+		read +=128;
+	}
+	ret= EVP_EncryptUpdate(ctx, (unsigned char*)cpt + read, &howmany, (unsigned char*) pt + read, pt_len - read);
+	if (ret != 1)
+		return false;
+	EVP_EncryptFinal (ctx, (unsigned char*)tag, &howmany);
+	if (ret != 1)
+		return false;
+	cpt_len = &howmany;
+	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, tag);
+	#pragma optimize("", off)
+   	memset(tag, 0, 16);
+	#pragma optimize("", on)
+	free(tag);
+	free(ctx);
+	return true;
+	
 }

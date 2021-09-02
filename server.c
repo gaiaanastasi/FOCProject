@@ -23,10 +23,10 @@
 #define DIM_USERNAME 32
 
 
-char* myNonce[DIM_NONCE];
+char myNonce[DIM_NONCE];
 
 
-void updateOnlineUsersList (char* username){
+void updateOnlineUserList (char* username){
 	//COMPLETARE
 }
 
@@ -62,7 +62,7 @@ X509* getServerCertificate (){
 }
 
 
-int handle_auth(int sock){
+void handle_auth(int sock){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
@@ -71,8 +71,8 @@ int handle_auth(int sock){
 
 	//Send a certification over a socket
 
-	unsigned char* cert_buf = NULL;
-	unsigned int cert_size = i2d_X509(cert, &cert_buf);
+	char* cert_buf = NULL;
+	unsigned int cert_size = i2d_X509(cert, (unsigned char**)&cert_buf);
 	if(cert_size < 0) {
 		perror("certificate size error");
 		exit(-1);
@@ -256,7 +256,7 @@ int main (int argc, const char** argv){
 						generateDHParams(params);
 						
 						EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
-						if(DHctx == NULL){
+						if(ctx == NULL){
 							perror("Error during the allocation of the context for DH key generation\n");
 							exit(-1);
 						}
@@ -285,24 +285,24 @@ int main (int argc, const char** argv){
 						
 						//DEVO CONCATENARCI IL NONCE E CIFRARE CON LA CHIAVE PUBBLICA DEL CLIENT
 						
-						send_obj (/*finire*/);
+						//send_obj (/*finire*/);
 						free(mbio);
 						
 						
 						//Receive the response from the client
-						long complete_msg_size = (long) receive_len (i);
-						unsigned char* client_message = (unsigned char*) malloc (complete_msg_size);
+						int complete_msg_size = (int) receive_len (i);
+						char* client_message = (char*) malloc (complete_msg_size);
 						receive_obj(i, client_message, complete_msg_size);
 						
 						//DECIFRO RISPOSTA CON LA CHIAVE PRIVATA SERVER
 						
-						
+						/*
 						
 						if(!checkNonce(myNonce, receiveNonce)){
 							perror("The session isn't fresh \n");
 						}
 						
-						BIO* mbio = BIO_new (BIO_s_mem());
+						mbio = BIO_new (BIO_s_mem());
 						if (!mbio){
 							perror("Error in BIO allocation \n");
 							exit(-1);
@@ -312,8 +312,8 @@ int main (int argc, const char** argv){
 						BIO_free(mbio);
 						
 						//Secret Derivation
-						EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
-						if(DHctx == NULL){
+						ctx = EVP_PKEY_CTX_new(params, NULL);
+						if(ctx == NULL){
 							perror("Error during the allocation of the context for DH secret derivation\n");
 							exit(-1);
 						}
@@ -343,7 +343,7 @@ int main (int argc, const char** argv){
 						}
 						EVP_PKEY_CTX_free(ctx);
 						EVP_PKEY_free(my_prvkey);
-						EVP_PKEY_free(client_pubkey);
+						EVP_PKEY_free(client_pubkey);*/
 						
 						/*while(1){
 						
