@@ -268,20 +268,61 @@ int main(int argc, const char** argv){
 	sumControl(dimOpBuffer, cpt_len);
 	send_len = dimOpBuffer + cpt_len;
 	message_send = (unsigned char*) malloc(send_len);
-	concat2Elements(message_send, opBuffer, cpt, dimOpBuffer, cpt_len);
+	concat2Elements(message_send, opBuffer, ciphertext, dimOpBuffer, cpt_len);
+	// <encrypted_key> | <IV> | <ciphertext>
 	send_obj(socket, message_send, send_len);
 
 	free(message_send);
 	free(iv);
 	free(encrypted_key);
+	free(ciphertext);
+	EVP_CIPHER_free(cipher);
 
 	//Receiving DH public key of the server 
 	recv_len = receive_len(socket);
 	message_recv = (unsigned char*) malloc(recv_len);
 	receive_obj(socket, message_recv, recv_len);
+
+	//asymmetric decryption
+	cipher = EVP_aes_128_cbc();
+	encrypted_key_len = EVP_PKEY_size(myPrivK);
+	iv_len = EVP_CIPHER_iv_length(cipher);
+	sumControl(encrypted_key_len, iv_len);
+	//check for correct format of the encrypted file
+	if(recv_len < encrypted_key_len + iv_len){
+		perror("Encrypted file with wrong format\n");
+		exit(-1);
+	}
+	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
+	iv = (unsigned char*) malloc(iv_len);
+	cpt_len = recv_len - encrypted_key_len - iv_len;	//possible overflow already controlled
+	ciphertext = (unsigned char*) malloc(cpt_len);
+	plaintext = (unsigned char*) malloc(cpt_len);
+	if(!iv || !encrypted_key || !ciphertext || !plaintext){
+		perror("Error during malloc\n");
+		exit(-1);
+	}
+	extract_data_from_array(encrypted_key, message_recv, 0, encrypted_key_len);
+	extract_data_from_array(iv, message_recv, encrypted_key_len, iv_len);
+	extract_data_from_array(ciphertext, message_recv, encrypted_key_len + iv_len, cpt_len);
+	asymmetricDecryption(cipher, plaintext, &pt_len, encrypted_key, encrypted_key_len, iv, iv_len, ciphertext, cpt_len, myPrivK);
+	free(encrypted_key);
+	free(iv);
+	free(ciphertext);
+
+	//check of the nonce
+	dimOpBuffer = DIM_NONCE;
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the nonce sent in the last message
+	extract_data_from_array(opBuffer, plaintext, 0, DIM_NONCE);
+	if(memcmp(opBuffer, serverNonce, DIM_NONCE) != 0){
+		perror("The two nonces are different\n");
+		exit(-1);
+	}
+	free(opBuffer);
+	dimOpBuffer = 0;
 	
 
-	//now that we have a symmetric key, some informations are useless
+	//now that we have a fresh symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
 	free(serverNonce);
 
