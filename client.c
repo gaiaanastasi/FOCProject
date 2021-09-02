@@ -27,10 +27,16 @@ int main(int argc, const char** argv){
 	int send_len = 0;		//length of the message to be sent
 	char* ciphertext;		//result of the encryption of the message that has to be sent
 	int cpt_len = 0;		//length of the cyphertext
+	char* plaintext;
+	int pt_len = 0;
 	char serverNonce[DIM_NONCE];
 	X509* serverCertificate = NULL;
 	X509* CACertificate = NULL;
 	char* opBuffer; 		//buffer used for different operations
+	char* encrypted_key = NULL;	//encrypted key when we use asymmetric encryption
+	int encrypted_key_len;
+	char* iv = NULL;		//Initialization vector
+	int iv_len;
 	int dimOpBuffer = 0;	//length of the content of opBuffer	
 	X509_STORE* certStore = NULL;	//certificate store of the client
 	EVP_PKEY* serverPubK = NULL;	//public key of the server
@@ -39,6 +45,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY* myPubK = NULL;		//public key of the user
 	EVP_PKEY* DHparams = NULL;			//DH parameters
 	EVP_PKEY_CTX* DHctx = NULL;		//DH context
+	EVP_CIPHER* cipher = NULL;		//cipher currently used
 	char fileName[64];				//it will contain different names for different files
 	char username[DIM_USERNAME];		//username to log in
 	char password[DIM_PASSWORD];		//password to find the private key
@@ -215,17 +222,56 @@ int main(int argc, const char** argv){
 	EVP_PKEY_CTX_free(DHctx);
 	EVP_PKEY_free(DHparams);
 
-	//SERIALIZATION OF THE PUBLIC KEY
+	//SERIALIZATION OF THE DH PUBLIC KEY
 	myBio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PUBKEY(myBio, key);
+	PEM_write_bio_PUBKEY(myBio, dhPrivateKey);
 	opBuffer = NULL;
-	dimOpBuffer = BIO_get_mem_data(myBio, &buffer);
+	dimOpBuffer = BIO_get_mem_data(myBio, &opBuffer);
 	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
 	BIO_read(myBio, (void*) opBuffer, dimOpBuffer);
 	BIO_free(myBio);
+	//opBuffer contains the DH public key
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
-	concat2Elements(message_send, serverNonce, opBuffer, DIM_NONCE, dimOpBuffer);
-	//devo cifrare il messaggio con pubK del server e inviarlo
+	sumControl(DIM_NONCE, dimOpBuffer);
+	pt_len = DIM_NONCE + dimOpBuffer;
+	plaintext = (char*) malloc(pt_len);
+	concat2Elements(plaintext, serverNonce, opBuffer, DIM_NONCE, dimOpBuffer);
+	//delete public key from opBuffer
+#pragma optimize("", off)
+   	memset(opBuffer, 0, dimOpBuffer);
+#pragma optimize("", on)
+	free(opBuffer);
+	dimOpBuffer = 0;
+
+	//asymmetric encryption
+	cipher = EVP_aes_128_cbc();
+	encrypted_key_len = EVP_PKEY_size(serverPubK);
+	iv_len = EVP_CIPHER_iv_length(cipher);
+	encrypted_key = (char*) malloc(encrypted_key_len);
+	iv = (char*) malloc(iv_len);
+	sumControl(pt_len, EVP_CIPHER_block_size(cipher));
+	ciphertext = (char*) malloc(pt_len + EVP_CIPHER_block_size(cipher));
+	if(!iv || !encrypted_key || !ciphertext){
+		perror("Error during malloc\n");
+		exit(-1);
+	}
+	if(!createDigitalEnvelope(cipher, plaintext, pt_len, encrypted_key, encrypted_key_len, iv, iv_len, ciphertext, &cpt_len, serverPubK)){
+		perror("Error during creation of the digital envelope\n");
+		exit(-1);
+	}
+	sumControl(encrypted_key_len, iv_len);
+	dimOpBuffer = encrypted_key_len + iv_len;
+	opBuffer = (char*) malloc(dimOpBuffer);
+	concat2Elements(opBuffer, encrypted_key, iv, encrypted_key_len, iv_len);
+	sumControl(dimOpBuffer, cpt_len);
+	send_len = dimOpBuffer + cpt_len;
+	message_send = (char*) malloc(send_len);
+	concat2Elements(message_send, opBuffer, cpt, dimOpBuffer, cpt_len);
+	send_obj(socket, message_send, send_len);
+
+	free(message_send);
+	free(iv);
+	free(encrypted_key);
 
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);

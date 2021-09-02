@@ -62,11 +62,13 @@ void extract_data_from_array(char* dest, char* src, int start, int end){
 	int i,j;
 	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
 		perror("wrong parameters");
+		dest = NULL;
 		return;
 	}
 	j = 0;
 	if (end < INT_MIN + start){
 		perror("integer overflow");
+		dest = NULL;
 		return;
 	}
 	for(i = start; i < end; i++){
@@ -83,6 +85,7 @@ void sumControl(int a, int b){
 	}
 }
 
+//concate two sources in one other array
 void concat2Elements(char* dest, char* src1, char* src2, int len1, int len2){
 	sumControl(len1, len2);
 	memset(dest, 0, len1 + len2);

@@ -146,3 +146,31 @@ bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	X509_STORE_CTX_free(storeCtx);
 	return true;
 }
+
+//function that returns the ciphertext, the encrypted key and the IV of a digital envelope
+bool createDigitalEnvelope(EVP_CIPHER* cipher, char* pt, int pt_len, char* encrypted_key, int encrypted_key_len, char* iv, int iv_len, char* cpt, int* cpt_len, EVP_PKEY* pubkey){
+	int ret;
+	int nc = 0;		//bytes encrypted at each chunk
+	int nctot = 0;	//total encrypted bytes
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return false;
+	ret = EVP_SealInit(ctx, cipher, &encrypted_key, &encrypted_key_len, iv, &pubkey, 1);
+	if(ret < 0)
+		return false;
+	ret = EVP_SealUpdate(ctx, cpt, &nc, pt, pt_len);
+	if(ret == 0)
+		return false;
+	nctot += nc;
+	ret = EVP_SealFinal(ctx, cpt + nctot, &nc);
+	if(ret == 0)
+		return false;
+	nctot += nc;
+	*cpt_len = nctot;
+
+	EVP_CIPHER_CTX_free(ctx);
+#pragma optimize("", off)
+   	memset(pt, 0, pt_len);
+#pragma optimize("", on)
+   	free(pt);
+}
