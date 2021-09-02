@@ -365,6 +365,4 @@ bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, in
 	
 }
 
-int main (int argc, const char** argv){
-	printf("DIM_IV: %d\n", (int) DIM_IV);
-}
+
