@@ -59,7 +59,7 @@ void send_obj (int sock, char* buf, size_t len){
 
 //return a portion of the src array
 //l'array ritornato è una porzione di src che va da src[start] a src[end - 1]
-void extract_data_from_array(char* dest, char* src, int start, int end){
+void extract_data_from_array(unsigned char* dest, unsigned char* src, int start, int end){
 	int i,j;
 	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
 		perror("wrong parameters");
@@ -84,6 +84,15 @@ void sumControl(int a, int b){
 		perror("integer overflow");
 		exit(-1);
 	}
+	
+}
+
+void subControlInt(int a, int b){
+	if (a > b){
+		perror("integer overflow");
+		exit(-1);
+	}
+	
 }
 
 //concate two sources in one other array
@@ -93,3 +102,5 @@ void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* sr
 	memcpy(dest, src1, len1);
 	memcpy(dest + len1, src2, len2);
 }
+
+

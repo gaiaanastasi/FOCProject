@@ -23,10 +23,10 @@
 #define DIM_USERNAME 32
 
 
-char myNonce[DIM_NONCE];
+unsigned char myNonce[DIM_NONCE];
 
 
-void updateOnlineUserList (char* username){
+void updateOnlineUserList (unsigned chat* username){
 	//COMPLETARE
 }
 
@@ -71,65 +71,54 @@ void handle_auth(int sock){
 
 	//Send a certification over a socket
 
-	char* cert_buf = NULL;
-	unsigned int cert_size = i2d_X509(cert, (unsigned char**)&cert_buf);
+	uunsigned char* cert_buf = NULL;
+	unsigned int cert_size = i2d_X509(cert, &cert_buf);
 	if(cert_size < 0) {
 		perror("certificate size error");
 		exit(-1);
 	}
 
 	//Generate msg
-	if (DIM_NONCE == INT_MAX || cert_size > INT_MAX - DIM_NONCE - 1){
-		perror("integer overflow");
+	if (DIM_NONCE == INT_MAX){
+		perror("increment overflow");
 		exit(-1);
 	}
+	sumControl (cert_size, DIM_NONCE + 1);
 	
 	size_t size_msg = cert_size + DIM_NONCE + 1;
-	char msg[size_msg];
-	strncat(msg, myNonce, DIM_NONCE);
-	strncat(msg, cert_buf, cert_size);
+	unsigned char msg[size_msg];
+	concat2Elements(msg, myNonce, cert_buf, DIM_NONCE, cert_size);
 	
 	OPENSSL_free(cert_buf);
 	send_obj(sock, msg, size_msg);
 	
 	//Receive signed nonce from client
 	int signed_size = receive_len(sock);
-	if (signed_size > INT_MAX - 1){
-		perror("integer overflow");
-		exit(-1);
-	}
-	char signed_msg[signed_size];
+	sumControl(signed_size, 1);
+	unsigned char signed_msg[signed_size];
 	receive_obj(sock, signed_msg, signed_size); 
 	
 	//Get the nonce and the username from the message I have received
-	char get_username[DIM_USERNAME];
+	unsigned char get_username[DIM_USERNAME];
 	extract_data_from_array(signed_msg, get_username, 0, DIM_USERNAME);
-	if(signed_size < INT_MIN + DIM_USERNAME){
-		perror("nteger overflow");
-		exit(-1);	
-	}
+	sumControl (signed_size, DIM_USERNAME);
+	
 	int signed_nonce_size = signed_size - DIM_USERNAME;
-	char signed_nonce[signed_nonce_size];
+	unsigned char signed_nonce[signed_nonce_size];
 	extract_data_from_array(signed_msg, signed_nonce, DIM_USERNAME, signed_size);
 	
 	//Get the public key from pem file
 	EVP_PKEY* pubkey;
-	if (DIR_SIZE > INT_MAX - DIM_SUFFIX_FILE_PUBKEY){
-		perror("integer overflow");
-		exit(-1);
-	}
-	if (DIM_USERNAME > INT_MAX - DIM_SUFFIX_FILE_PUBKEY - DIR_SIZE){
-		perror("integer overflow");
-		exit(-1);
-	}
+	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
+	sumControl(DIR_USERNAME, (DIM_SUFFIX_FILE_PUBKEY-DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
-	char namefile[name_size];
+	unsigned char namefile[name_size];
 	int lim = DIR_SIZE -1;
-	strncat(namefile, DIR, lim );
-	lim= DIM_USERNAME-1;
-	strncat(namefile, get_username, lim);
+	strcat ((char*)namefile, (char*)DIR, lim);
+	lim= DIM_USERNAME -1;
+	strcat ((char*)namefile, (char*)get_username, lim);
 	lim= DIM_SUFFIX_FILE_PUBKEY-1;
-	strncat(namefile, "_pubkey.pem", lim );
+	strcat ((char*)namefile, (char*)"pubkey.pem", lim);
 	FILE* file = fopen(namefile, "r");
 	if(!file){
 		perror("Specified file doesn't exists");
@@ -296,6 +285,10 @@ int main (int argc, const char** argv){
 						
 						//DECIFRO RISPOSTA CON LA CHIAVE PRIVATA SERVER
 						
+						#pragma optimize("", off)
+						   	memset(client_message, 0, complete_msg_size);
+						#pragma optimize("", on)
+						   	free(client_message);
 						/*
 						
 						if(!checkNonce(myNonce, receiveNonce)){
@@ -343,7 +336,8 @@ int main (int argc, const char** argv){
 						}
 						EVP_PKEY_CTX_free(ctx);
 						EVP_PKEY_free(my_prvkey);
-						EVP_PKEY_free(client_pubkey);*/
+						EVP_PKEY_free(client_pubkey);
+						EVP_PKEY_free(params);*/
 						
 						/*while(1){
 						
@@ -363,6 +357,11 @@ int main (int argc, const char** argv){
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
 						exit(-1);
+						#pragma optimize("", off)
+						   	memset(session_key, 0, session_key_size);
+						#pragma optimize("", on)
+						   	free(session_key);
+						
 					}
 					//Parent process
 					close(i);	//Closure socket
