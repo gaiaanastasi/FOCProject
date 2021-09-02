@@ -279,6 +279,7 @@ int main(int argc, const char** argv){
 	recv_len = receive_len(socket);
 	message_recv = (unsigned char*) malloc(recv_len);
 	receive_obj(socket, message_recv, recv_len);
+	
 
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);

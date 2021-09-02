@@ -87,7 +87,7 @@ void sumControl(int a, int b){
 }
 
 //concate two sources in one other array
-void concat2Elements(char* dest, char* src1, char* src2, int len1, int len2){
+void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* src2, int len1, int len2){
 	sumControl(len1, len2);
 	memset(dest, 0, len1 + len2);
 	memcpy(dest, src1, len1);
