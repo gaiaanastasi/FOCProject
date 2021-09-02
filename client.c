@@ -21,22 +21,22 @@ int main(int argc, const char** argv){
 	int socket;
 	int ret;				//it will contain different integer return values (used for checking)
 	size_t command;			//command typed by the user
-	char* message_recv;
+	unsigned char* message_recv;
 	int recv_len = 0;		//length of the received message
-	char* message_send;
+	unsigned char* message_send;
 	int send_len = 0;		//length of the message to be sent
-	char* ciphertext;		//result of the encryption of the message that has to be sent
+	unsigned char* ciphertext;		//result of the encryption of the message that has to be sent
 	int cpt_len = 0;		//length of the cyphertext
-	char* plaintext;
-	int pt_len = 0;
-	char serverNonce[DIM_NONCE];
+	unsigned char* plaintext;
+	int pt_len = 0;			//length of the plaintext
+	unsigned char* encrypted_key = NULL;	//encrypted key when we use asymmetric encryption
+	int encrypted_key_len;
+	unsigned char* iv = NULL;		//Initialization vector
+	int iv_len;
+	unsigned char serverNonce[DIM_NONCE];
 	X509* serverCertificate = NULL;
 	X509* CACertificate = NULL;
-	char* opBuffer; 		//buffer used for different operations
-	char* encrypted_key = NULL;	//encrypted key when we use asymmetric encryption
-	int encrypted_key_len;
-	char* iv = NULL;		//Initialization vector
-	int iv_len;
+	unsigned char* opBuffer; 		//buffer used for different operations
 	int dimOpBuffer = 0;	//length of the content of opBuffer	
 	X509_STORE* certStore = NULL;	//certificate store of the client
 	EVP_PKEY* serverPubK = NULL;	//public key of the server
@@ -50,7 +50,7 @@ int main(int argc, const char** argv){
 	char username[DIM_USERNAME];		//username to log in
 	char password[DIM_PASSWORD];		//password to find the private key
 	char* charPointer;				//generic pointer used in different parts
-	char* signature;			//it will contain the signature
+	unsigned char* signature;			//it will contain the signature
 	int signatureLen;			//len of the signature
 	FILE* file = NULL;			//generic file pointer used in different parts of the code
 
@@ -143,16 +143,16 @@ int main(int argc, const char** argv){
 
 	//AUTHENTICATION WITH THE SERVER
 	recv_len = receive_len(socket);
-	message_recv = (char*) malloc(recv_len * sizeof(char));
+	message_recv = (unsigned char*) malloc(recv_len);
 	receive_obj(socket, message_recv, recv_len);
-	serverNonce = (char*) malloc((DIM_NONCE) * sizeof(char));
+	serverNonce = (unsigned char*) malloc((DIM_NONCE));
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
 		exit(-1);
 	}
 	dimOpBuffer = recv_len - DIM_NONCE;
-	opBuffer = (char*) malloc((dimOpBuffer) * sizeof(char));
+	opBuffer = (unsigned char*) malloc((dimOpBuffer));
 	extract_data_from_array(opBuffer, message_recv, DIM_NONCE, recv_len);	//opBuffer will contain the serialized certificate of the server
 	if(opBuffer == NULL){
 		perror("Error during the extraction of the certificate of the server\n");
@@ -184,13 +184,14 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
+	sumControl(DIM_NONCE, DIM_USERNAME);
 	dimOpBuffer = DIM_NONCE + DIM_USERNAME;
-	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
 	concat2Elements(opBuffer, serverNonce, username, DIM_NONCE, DIM_USERNAME);
-	signature = (char*)malloc(EVP_PKEY_size(myPrivK));
+	signature = (unsigned char*)malloc(EVP_PKEY_size(myPrivK));
 	signatureFunction(opBuffer, dimOpBuffer, signature, &signatureLen, myPrivK);
 	send_len = dimOpBuffer + signatureLen;
-	message_send = (char*) malloc(send_len);
+	message_send = (unsigned char*) malloc(send_len);
 	concat2Elements(message_send, opBuffer, signature, dimOpBuffer, signatureLen);
 
 	send_obj(socket, message_send, send_len);
@@ -227,14 +228,15 @@ int main(int argc, const char** argv){
 	PEM_write_bio_PUBKEY(myBio, dhPrivateKey);
 	opBuffer = NULL;
 	dimOpBuffer = BIO_get_mem_data(myBio, &opBuffer);
-	opBuffer = (char*) malloc(dimOpBuffer * sizeof(char));
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
 	BIO_read(myBio, (void*) opBuffer, dimOpBuffer);
 	BIO_free(myBio);
 	//opBuffer contains the DH public key
+
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
 	sumControl(DIM_NONCE, dimOpBuffer);
 	pt_len = DIM_NONCE + dimOpBuffer;
-	plaintext = (char*) malloc(pt_len);
+	plaintext = (unsigned char*) malloc(pt_len);
 	concat2Elements(plaintext, serverNonce, opBuffer, DIM_NONCE, dimOpBuffer);
 	//delete public key from opBuffer
 #pragma optimize("", off)
@@ -247,10 +249,10 @@ int main(int argc, const char** argv){
 	cipher = EVP_aes_128_cbc();
 	encrypted_key_len = EVP_PKEY_size(serverPubK);
 	iv_len = EVP_CIPHER_iv_length(cipher);
-	encrypted_key = (char*) malloc(encrypted_key_len);
-	iv = (char*) malloc(iv_len);
+	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
+	iv = (unsigned char*) malloc(iv_len);
 	sumControl(pt_len, EVP_CIPHER_block_size(cipher));
-	ciphertext = (char*) malloc(pt_len + EVP_CIPHER_block_size(cipher));
+	ciphertext = (unsigned char*) malloc(pt_len + EVP_CIPHER_block_size(cipher));
 	if(!iv || !encrypted_key || !ciphertext){
 		perror("Error during malloc\n");
 		exit(-1);
@@ -261,11 +263,11 @@ int main(int argc, const char** argv){
 	}
 	sumControl(encrypted_key_len, iv_len);
 	dimOpBuffer = encrypted_key_len + iv_len;
-	opBuffer = (char*) malloc(dimOpBuffer);
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
 	concat2Elements(opBuffer, encrypted_key, iv, encrypted_key_len, iv_len);
 	sumControl(dimOpBuffer, cpt_len);
 	send_len = dimOpBuffer + cpt_len;
-	message_send = (char*) malloc(send_len);
+	message_send = (unsigned char*) malloc(send_len);
 	concat2Elements(message_send, opBuffer, cpt, dimOpBuffer, cpt_len);
 	send_obj(socket, message_send, send_len);
 
@@ -273,7 +275,10 @@ int main(int argc, const char** argv){
 	free(iv);
 	free(encrypted_key);
 
-	//ricevo DH pub K di server 
+	//Receiving DH public key of the server 
+	recv_len = receive_len(socket);
+	message_recv = (unsigned char*) malloc(recv_len);
+	receive_obj(socket, message_recv, recv_len);
 
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);

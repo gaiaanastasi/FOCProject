@@ -148,8 +148,8 @@ bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	return true;
 }
 
-//function that returns the ciphertext, the encrypted key and the IV of a digital envelope
-bool createDigitalEnvelope(EVP_CIPHER* cipher, char* pt, int pt_len, char* encrypted_key, int encrypted_key_len, char* iv, int iv_len, char* cpt, int* cpt_len, EVP_PKEY* pubkey){
+//function that stores the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
+bool createDigitalEnvelope(EVP_CIPHER* cipher, unsigned char* pt, int pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int* cpt_len, EVP_PKEY* pubkey){
 	int ret;
 	int nc = 0;		//bytes encrypted at each chunk
 	int nctot = 0;	//total encrypted bytes
@@ -175,6 +175,29 @@ bool createDigitalEnvelope(EVP_CIPHER* cipher, char* pt, int pt_len, char* encry
 #pragma optimize("", on)
    	free(pt);
    	return true;
+}
+
+//function that store the plaintext, given the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
+bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int cpt_len, EVP_PKEY* prvKey){
+	int ret;
+	int nd = 0; 	// bytes decrypted at each chunk
+   	int ndtot = 0; 	// total decrypted bytes
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return false;
+	ret = EVP_OpenInit(ctx, cipher, encrypted_key, encrypted_key_len, iv, prvKey);
+	if(ret == 0)
+		return false;
+	ret = EVP_OpenUpdate(ctx, pt, &nd, cpt, cpt_len);
+	if(ret == 0)
+		return false;
+	ndtot += nd;
+	ret = EVP_OpenFinal(ctx, pt + ndtot, &nd);
+	if(ret == 0)
+		return false;
+	ndtot += nd;
+	*pt_len = ndtot;
+	EVP_CIPHER_CTX(ctx);
 }
 
 //function for symmetric encryption
