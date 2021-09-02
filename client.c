@@ -273,6 +273,8 @@ int main(int argc, const char** argv){
 	free(iv);
 	free(encrypted_key);
 
+	//ricevo DH pub K di server 
+
 	//now that we have a symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
 	free(serverNonce);
