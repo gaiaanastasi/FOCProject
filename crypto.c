@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define DIM_NONCE 16
 #define DIM_USERNAME 32
@@ -236,4 +237,28 @@ bool symmetricEncryption(EVP_CIPHER* cipher, char* pt, int pt_len,  char* iv, in
 	free(ctx);
 	return true;
 	
+}
+
+
+//function that derive the DH shared secret and stores it into a buffer. It returns NULL in case of error
+unsigned char* DHSecretDerivation(EVP_PKEY* privK, EVP_PKEY* pubK, int* secretLen){
+	unsigned char* secret;
+	EVP_PKEY_CTX* derive_ctx;
+	int ret;
+	derive_ctx = EVP_PKEY_CTX_new(privK, NULL);
+	if(derive_ctx == NULL)
+		return NULL;
+	ret = EVP_PKEY_derive_init(derive_ctx);
+	if(ret <= 0)
+		return NULL;
+	ret = EVP_PKEY_derive_set_peer(derive_ctx, pubK);
+	if(ret <= 0)
+		return NULL;
+	EVP_PKEY_derive(derive_ctx, NULL, secretLen);
+	secret = (unsigned char*) malloc(*secretLen);
+	if(secret == NULL)
+		return NULL;
+	EVP_PKEY_derive(derive_ctx, secret, secretLen);
+	EVP_PKEY_CTX_free(derive_ctx);
+	return secret;
 }

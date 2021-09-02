@@ -8,6 +8,7 @@
 #include <openssl/x509_vfy.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <stdbool.h>
 #include "crypto.c"
 #include "utility.c"
 
@@ -320,7 +321,7 @@ int main(int argc, const char** argv){
 	}
 	free(opBuffer);
 	dimOpBuffer = 0;
-	
+
 
 	//now that we have a fresh symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
