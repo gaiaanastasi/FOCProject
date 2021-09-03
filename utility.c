@@ -79,7 +79,7 @@ void extract_data_from_array(unsigned char* dest, unsigned char* src, int start,
 	}
 }
 
-//return true if the sum between the two elements doesn't cause overflow
+//return if the sum between the two elements doesn't cause overflow
 void sumControl(int a, int b){
 	if (a > INT_MAX - b){
 		perror("integer overflow");
