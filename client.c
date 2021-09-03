@@ -248,7 +248,10 @@ int main(int argc, const char** argv){
 	}
 	free(opBuffer);
 	dimOpBuffer = 0;
-	//devo derivare segreto (gia fatta la funzione)
+
+	//SISTEMARE
+	symmetricKeyDerivation_for_aes_128_gcm();
+	//SISTEMARE
 
 	//now that we have a fresh symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);

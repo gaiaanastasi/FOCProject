@@ -161,7 +161,7 @@ EVP_PKEY* generateDHParams(){
 	return dhPrivateKey;
 }
 
-//function that returns the serialization of a DH public key
+//Function that returns the serialization of a DH public key
 unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
 	BIO* myBio;
 	unsigned char* buffer;
@@ -184,6 +184,62 @@ EVP_PKEY* deserializeDHpublicKey(unsigned char* buffer, int bufferLen){
 	pubKey = PEM_read_bio_PUBKEY(myBio, NULL, NULL, NULL);
 	BIO_free(myBio);
 	return pubKey;
+}
+
+//Function that derive a symmetric key for aes_128_gcm by means of the DH shared secret, derived by using the two keys. It returns NULL in case of error
+unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY* pubK){
+	unsigned char* secret;
+	int secretLen;
+	unsigned char* digest;
+	int digestLen;
+	unsigned char* key;
+	int keyLen;
+	EVP_MD_CTX* Hctx;
+	EVP_PKEY_CTX* derive_ctx;
+	EVP_CIPHER* cipher;
+	int ret;
+	//secret derivation
+	derive_ctx = EVP_PKEY_CTX_new(privK, NULL);
+	if(derive_ctx == NULL)
+		return NULL;
+	ret = EVP_PKEY_derive_init(derive_ctx);
+	if(ret <= 0)
+		return NULL;
+	ret = EVP_PKEY_derive_set_peer(derive_ctx, pubK);
+	if(ret <= 0)
+		return NULL;
+	EVP_PKEY_derive(derive_ctx, NULL, secretLen);
+	secret = (unsigned char*) malloc(*secretLen);
+	if(secret == NULL)
+		return NULL;
+	EVP_PKEY_derive(derive_ctx, secret, secretLen);
+	EVP_PKEY_CTX_free(derive_ctx);
+	//key derivation by hashing the shared secret
+	Hctx = EVP_MD_CTX_new();
+	digest = (unsigned char*) malloc(EVP_MD_size(EVP_sha256()));
+	ret = EVP_DigestInit(Hctx, EVP_sha256());
+	if(ret != 1)
+		return NULL;
+	ret = EVP_DigestUpdate(Hctx, secret, secretLen);
+	if(ret != 1)
+		return NULL;
+	ret = EVP_DigestFinal(Hctx, digest, &digestLen);
+	if(ret != 1)
+		return NULL;
+	EVP_MD_CTX_free(Hctx);
+	cipher = EVP_aes_128_gcm();
+	keyLen = EVP_CIPHER_key_length(cipher);
+	EVP_CIPHER_free(cipher);
+	key = (unsigned char*) malloc(keyLen);
+	if(!memcpy(key, digest, keyLen))
+		return false;
+#pragma optimize("", off);
+	memset(digest, 0, digestLen);
+	memset(secret, 0, secretLen);
+#pragma optimize("", on);
+	free(secret);
+	free(digest);
+	return key;
 }
 
 //returns true if the certificate is verified by means of the store
@@ -506,29 +562,3 @@ bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, in
    	return true;
 	
 }
-
-
-
-//function that derive the DH shared secret and stores its length into a variable. It returns NULL in case of error
-unsigned char* DHSecretDerivation(EVP_PKEY* privK, EVP_PKEY* pubK, int* secretLen){
-	unsigned char* secret;
-	EVP_PKEY_CTX* derive_ctx;
-	int ret;
-	derive_ctx = EVP_PKEY_CTX_new(privK, NULL);
-	if(derive_ctx == NULL)
-		return NULL;
-	ret = EVP_PKEY_derive_init(derive_ctx);
-	if(ret <= 0)
-		return NULL;
-	ret = EVP_PKEY_derive_set_peer(derive_ctx, pubK);
-	if(ret <= 0)
-		return NULL;
-	EVP_PKEY_derive(derive_ctx, NULL, secretLen);
-	secret = (unsigned char*) malloc(*secretLen);
-	if(secret == NULL)
-		return NULL;
-	EVP_PKEY_derive(derive_ctx, secret, secretLen);
-	EVP_PKEY_CTX_free(derive_ctx);
-	return secret;
-}
-
