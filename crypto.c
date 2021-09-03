@@ -172,6 +172,7 @@ unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
 	buffer = (unsigned char*) malloc(*bufferLen);
 	BIO_read(myBio, (void*) buffer, *bufferLen);
 	BIO_free(myBio);
+	return buffer;
 }
 
 //Function that returns the deserialized DH public key
@@ -182,6 +183,7 @@ EVP_PKEY* deserializeDHpublicKey(unsigned char* buffer, int bufferLen){
 	BIO_write(myBio, buffer, bufferLen);
 	pubKey = PEM_read_bio_PUBKEY(myBio, NULL, NULL, NULL);
 	BIO_free(myBio);
+	return pubKey;
 }
 
 //returns true if the certificate is verified by means of the store
