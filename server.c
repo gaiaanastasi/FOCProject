@@ -4,7 +4,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <netinet/in.h>
-#include "utility.c"
+//#include "utility.c"
 #include "crypto.c"
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
@@ -12,6 +12,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 
 #define DIM_SUFFIX_FILE_PUBKEY 12
@@ -24,14 +28,95 @@
 
 
 unsigned char myNonce[DIM_NONCE];
+pthread_mutex_t mutex;
 
-
-void updateOnlineUserList (unsigned chat* username){
-	//COMPLETARE
+//Mapping from username to unsigned int
+unsigned int mappingUserToInt(unsigned char* username){
+	if (strcmp((char*)username, "matteo")==0) return 0;
+	if (strcmp((char*)username, "gaia")==0) return 1;
+	else return -1;
 }
 
-void get_online_user (int sock){
-	//COMPLETARE
+unsigned char* mappingIntToUser(unsigned int i){
+	unsigned char* ret;
+	if(i==0) {
+		ret = (unsigned char*) malloc (strlen("matteo")+1);
+		strncpy((char*)ret, "matteo", strlen("matteo"));
+	}
+	if(i==1) {
+		ret = (unsigned char*) malloc (strlen("gaia")+1);
+		strncpy((char*)ret, "gaia", strlen("gaia"));
+	}
+	else {
+		ret = (unsigned char*) malloc (strlen("")+1);
+		strncpy((char*)ret, "", strlen(""));
+	}
+	return ret;
+
+}
+
+
+//Mark new user as online
+void addUsertoList(unsigned char* username, bool* online_users){
+	//GLock on the shared resource
+	int user = mappingUserToInt(username);
+	if(user == -1){
+		perror("user not found");
+		exit(-1);
+	}
+	int ret = pthread_mutex_lock(&mutex);
+	if(ret != 0){
+		perror("lock");
+		exit(-1);
+	}
+	//Modify the variable 
+	online_users[user] = true;
+	//Unlock the shared resource
+	ret = pthread_mutex_unlock(&mutex);
+	if(ret != 0){
+		perror("lock");
+		exit(-1);
+	}
+	
+	
+}
+
+unsigned int getNumberOfOnlineUsers(bool* online_users){
+	unsigned int tot = 0;
+	for (unsigned int i=0; i<TOT_USERS; i++){
+		if(online_users[i]) tot++;
+	}
+	return tot;
+}
+
+void getOnlineUser (int sock, bool* online_users){
+	//Get the total number of active user
+	unsigned int tot = getNumberOfOnlineUsers(online_users);
+	if (tot == 0) {
+		perror("error in getNumberOfOnlineUsers");
+		exit(-1);
+	}
+	
+	unsigned char* online[tot];
+	int last = 0;
+	
+	for (unsigned int i=0; i<TOT_USERS; i++){
+		//Get the username of each online user
+		unsigned char* mapping = mappingIntToUser(i);
+		if(online_users) {
+			//Store it in an array
+			online[last] = mapping;
+			last++;
+		}
+		#pragma optimize("", off)
+	   	memset(mapping, 0, strlen((char*)mapping)+1);
+		#pragma optimize("", on)
+	   	free(mapping);
+			
+	}
+	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE
+	
+	
 }
 
 
@@ -62,7 +147,7 @@ X509* getServerCertificate (){
 }
 
 
-void handle_auth(int sock){
+void handle_auth(int sock, bool* users_online){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
@@ -71,7 +156,7 @@ void handle_auth(int sock){
 
 	//Send a certification over a socket
 
-	uunsigned char* cert_buf = NULL;
+	unsigned char* cert_buf = NULL;
 	unsigned int cert_size = i2d_X509(cert, &cert_buf);
 	if(cert_size < 0) {
 		perror("certificate size error");
@@ -110,16 +195,16 @@ void handle_auth(int sock){
 	//Get the public key from pem file
 	EVP_PKEY* pubkey;
 	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
-	sumControl(DIR_USERNAME, (DIM_SUFFIX_FILE_PUBKEY-DIR_SIZE));
+	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY-DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
 	unsigned char namefile[name_size];
 	int lim = DIR_SIZE -1;
-	strcat ((char*)namefile, (char*)DIR, lim);
+	strncat ((char*)namefile, (char*)DIR, lim);
 	lim= DIM_USERNAME -1;
-	strcat ((char*)namefile, (char*)get_username, lim);
+	strncat ((char*)namefile, (char*)get_username, lim);
 	lim= DIM_SUFFIX_FILE_PUBKEY-1;
-	strcat ((char*)namefile, (char*)"pubkey.pem", lim);
-	FILE* file = fopen(namefile, "r");
+	strncat ((char*)namefile, (char*)"pubkey.pem", lim);
+	FILE* file = fopen((char*)namefile, "r");
 	if(!file){
 		perror("Specified file doesn't exists");
 		exit(-1);
@@ -144,7 +229,7 @@ void handle_auth(int sock){
 	EVP_PKEY_free(pubkey);
 	
 	//Update online users' list
-	updateOnlineUserList(get_username);
+	addUsertoList(get_username, users_online );
 	
 		
 
@@ -207,8 +292,36 @@ int main (int argc, const char** argv){
 	fdmax = socket_ascolto;	
 	FD_SET(socket_ascolto, &read_ready);
 
-				
-
+	bool* users_online = (bool*) mmap(NULL, TOT_USERS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);	
+	int fd = open(argv[1], O_RDONLY);
+	if(fd==-1){
+		perror("Open fail");
+		exit(-1);
+	}
+	
+	if (users_online == MAP_FAILED){
+		perror("MAP_FAILED");
+		exit(-1);
+	}
+	
+	 pthread_mutexattr_t mutexattr;
+	 int rc = pthread_mutexattr_init(&mutexattr);
+	 if (rc != 0){
+	   perror("pthread_mutexattr_init");
+	   exit(-1);
+	  }
+	  rc = pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
+	if (rc != 0){
+	   perror("pthread_mutexattr_setpshared");
+	   exit(-1);
+	  }
+	 rc =pthread_mutex_init(&mutex, &mutexattr);
+	 if (rc != 0){
+	   perror("pthread_mutex_init");
+	   exit(-1);
+	  }
+	    
+	
 	while(1){
 		read_ready = master;
 		select(fdmax+1, &read_ready, NULL, NULL, NULL);
@@ -224,7 +337,8 @@ int main (int argc, const char** argv){
 					}
 					FD_SET(socket_com, &master);	//Add the new socket to the main set
 					if (socket_com > socket_ascolto) fdmax = socket_com;
-					handle_auth(socket_com);
+					
+					
 					
 				}
 				else{	//It's not socket_ascolto, it's another one
@@ -236,7 +350,9 @@ int main (int argc, const char** argv){
 					else if (pid == 0){		//I am in the child process
 						close(socket_ascolto);
 						
-						//EDHKE
+						handle_auth(socket_com, users_online);
+						
+						/*//EDHKE
 						EVP_PKEY* params = EVP_PKEY_new();
 						if(params == NULL){
 							perror("Error during instantiation of DH parameters\n");
@@ -274,8 +390,8 @@ int main (int argc, const char** argv){
 						
 						//DEVO CONCATENARCI IL NONCE E CIFRARE CON LA CHIAVE PUBBLICA DEL CLIENT
 						
-						//send_obj (/*finire*/);
-						free(mbio);
+						//send_obj (/*finire*///);
+						/*free(mbio);
 						
 						
 						//Receive the response from the client
@@ -357,10 +473,10 @@ int main (int argc, const char** argv){
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
 						exit(-1);
-						#pragma optimize("", off)
+						/*#pragma optimize("", off)
 						   	memset(session_key, 0, session_key_size);
 						#pragma optimize("", on)
-						   	free(session_key);
+						   	free(session_key);*/
 						
 					}
 					//Parent process

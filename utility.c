@@ -29,7 +29,7 @@ int receive_len (int socket_com){
 	return dim_buf;
 }
 
-void receive_obj (int socket_com, char* buf, int dim_buf){
+void receive_obj (int socket_com, unsigned char* buf, int dim_buf){
 //Receive the message via socket
 	ssize_t no_err = recv(socket_com, buf, dim_buf, MSG_WAITALL);
 	
@@ -40,7 +40,7 @@ void receive_obj (int socket_com, char* buf, int dim_buf){
 }
 
 
-void send_obj (int sock, char* buf, size_t len){		
+void send_obj (int sock, unsigned char* buf, size_t len){		
 //Send the message via socket
 	uint32_t dim_obj = htonl(len);
 	ssize_t no_err;

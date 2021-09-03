@@ -18,12 +18,12 @@
 #define DIM_PASSWORD 32
 #define AAD "0000"
 #define DIM_TAG 16
-#define DIM_IV 12
 #define DIM_BLOCK 128
 #define DIM_AAD 4
+#define DIM_IV 12
 
 //function that generate a nonce of DIM_NONCE bit
-void generateNonce(char* nonce){
+void generateNonce(unsigned char* nonce){
 	if(RAND_poll() != 1)
 		perror("error occured during RAND_poll()");
 	if(RAND_bytes((unsigned char*)nonce, DIM_NONCE) != 1)
@@ -58,7 +58,7 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
 }
 
 //function wthat verifies the signature
-bool verifySignature (char* signed_msg,  char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
+bool verifySignature (unsigned char* signed_msg,  unsigned char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
 	
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	EVP_VerifyInit(ctx, EVP_sha256());
@@ -222,11 +222,11 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	ret = EVP_PKEY_derive_set_peer(derive_ctx, pubK);
 	if(ret <= 0)
 		return NULL;
-	EVP_PKEY_derive(derive_ctx, NULL, secretLen);
-	secret = (unsigned char*) malloc(*secretLen);
+	EVP_PKEY_derive(derive_ctx, NULL, (size_t*)&secretLen);
+	secret = (unsigned char*) malloc(secretLen);
 	if(secret == NULL)
 		return NULL;
-	EVP_PKEY_derive(derive_ctx, secret, secretLen);
+	EVP_PKEY_derive(derive_ctx, secret, (size_t*)&secretLen);
 	EVP_PKEY_CTX_free(derive_ctx);
 	//key derivation by hashing the shared secret
 	Hctx = EVP_MD_CTX_new();
@@ -237,7 +237,7 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	ret = EVP_DigestUpdate(Hctx, secret, secretLen);
 	if(ret != 1)
 		return NULL;
-	ret = EVP_DigestFinal(Hctx, digest, &digestLen);
+	ret = EVP_DigestFinal(Hctx, digest, (unsigned int*)&digestLen);
 	if(ret != 1)
 		return NULL;
 	EVP_MD_CTX_free(Hctx);
@@ -246,7 +246,7 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	EVP_CIPHER_free(cipher);
 	key = (unsigned char*) malloc(keyLen);
 	if(!memcpy(key, digest, keyLen))
-		return false;
+		return NULL;
 #pragma optimize("", off);
 	memset(digest, 0, digestLen);
 	memset(secret, 0, secretLen);
@@ -328,14 +328,14 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
 	concat2Elements(buffer, encrypted_key, iv, encrypted_key_len, iv_len);
 	sumControl(dimB, cpt_len);
 	*dimM = dimB + cpt_len;
-	message = (unsigned char*) malloc(dimM);
+	message = (unsigned char*) malloc(*dimM);
 	concat2Elements(message, buffer, ciphertext, dimB, cpt_len);
 	free(iv);
 	free(encrypted_key);
 	free(ciphertext);
    	return message;
 }
-
+*/
 /*
 //function that store the plaintext, given the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
 bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int cpt_len, EVP_PKEY* prvKey){
@@ -375,7 +375,7 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	int nd = 0; 	// bytes decrypted at each chunk
    	int ndtot = 0; 	// total decrypted bytes
 	EVP_CIPHER_CTX* ctx;
-	EVP_CIPHER* cipher = EVP_aes_128_cbc();
+	EVP_CIPHER* cipher = EVP_aes_128_cbc(); 
 	encrypted_key_len = EVP_PKEY_size(privKey);
 	iv_len = EVP_CIPHER_iv_length(cipher);
 	sumControl(encrypted_key_len, iv_len);
@@ -506,7 +506,7 @@ bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, in
 	
 	//subControlInt(sizeof(cpt), DIM_BLOCK);
 	subControlInt(sizeof(cpt), (int)DIM_IV);
-	int cipher_len = sizeof(cpt) - (int)DIM_IV;
+	int cipher_len = (int)sizeof(cpt) - DIM_IV;
 	subControlInt(cipher_len, (int)DIM_TAG);
 	cipher_len -=(int)DIM_TAG;
 	subControlInt(cipher_len, (int)DIM_AAD);
