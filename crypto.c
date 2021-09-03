@@ -161,6 +161,29 @@ EVP_PKEY* generateDHParams(){
 	return dhPrivateKey;
 }
 
+//function that returns the serialization of a DH public key
+unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
+	BIO* myBio;
+	unsigned char* buffer;
+	myBio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(myBio, privK);
+	buffer = NULL;
+	*bufferLen = BIO_get_mem_data(myBio, &buffer);
+	buffer = (unsigned char*) malloc(*bufferLen);
+	BIO_read(myBio, (void*) buffer, *bufferLen);
+	BIO_free(myBio);
+}
+
+//Function that returns the deserialized DH public key
+EVP_PKEY* deserializeDHpublicKey(unsigned char* buffer, int bufferLen){
+	EVP_PKEY* pubKey;
+	BIO* myBio;
+	myBio = BIO_new(BIO_s_mem());
+	BIO_write(myBio, buffer, bufferLen);
+	pubKey = PEM_read_bio_PUBKEY(myBio, NULL, NULL, NULL);
+	BIO_free(myBio);
+}
+
 //returns true if the certificate is verified by means of the store
 bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	X509_STORE_CTX* storeCtx = X509_STORE_CTX_new();

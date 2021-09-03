@@ -198,13 +198,7 @@ int main(int argc, const char** argv){
 	
 
 	//SERIALIZATION OF THE DH PUBLIC KEY
-	myBio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PUBKEY(myBio, dhPrivateKey);
-	opBuffer = NULL;
-	dimOpBuffer = BIO_get_mem_data(myBio, &opBuffer);
-	opBuffer = (unsigned char*) malloc(dimOpBuffer);
-	BIO_read(myBio, (void*) opBuffer, dimOpBuffer);
-	BIO_free(myBio);
+	opBuffer = serializeDHpublicKey(dhPrivateKey, &dimOpBuffer);
 	//opBuffer contains the DH public key
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
@@ -232,7 +226,7 @@ int main(int argc, const char** argv){
 	free(message_send);
 	send_len = 0;
 
-	//Receiving DH public key of the server 
+	//RECEIVING DH PUBLIC KEY OF THE SERVER
 	recv_len = receive_len(socket);
 	message_recv = (unsigned char*) malloc(recv_len);
 	receive_obj(socket, message_recv, recv_len);
