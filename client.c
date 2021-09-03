@@ -14,7 +14,8 @@
 
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1"
-const char welcomeMessage[256] = "Hi! This is a secure messaging system \n Type: \n (1) to see who's online \n (2) to send a request to talk (3) to log out\n\n What do you want to do? ";
+const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n
+									(4) to log out\n\n What do you want to do? ";
 const int DIM_USERNAME = 32;
 const int DIM_PASSWORD = 32;
 
@@ -51,6 +52,7 @@ int main(int argc, const char** argv){
 	unsigned char* signature;			//it will contain the signature
 	int signatureLen;			//len of the signature
 	FILE* file = NULL;			//generic file pointer used in different parts of the code
+	fd_set readFdSet;			//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
 	//socket creation and instantiation
 	socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -278,24 +280,43 @@ int main(int argc, const char** argv){
 	free(message_recv);
 	recv_len = 0;
 
-	printf("%s", welcomeMessage);
+	printf("Hi! This is a secure messaging system\n");
 	while(1){
-		if(scanf("%d", &command) =! 1){
-			perror("scanf function has read a wrong number of items \n");
+		printf("%s", commandMessage);
+		FD_ZERO(&readFdSet);		//cleaning the set
+		FD_SET(0, &readFdSet);		//stdin added to the set
+		FD_SET(socket, &readFdSet);		//socket added to the set
+		ret = select(socket + 1, &readFdSet, NULL, NULL, NULL);
+		if(ret < 0){
+			perror("Error during select()\n");
 			exit(-1);
 		}
-		switch(command){
-			case 1:		//online people
-				break;
-			case 2:		//request to talk
-				break;
-			case 3:		//logging out
-				break;
-
+		if(FD_ISSET(0, &readFdSet)){
+			//the user has typed something
+			if(scanf("%1d", &command) =! 1){
+				perror("scanf function has read a wrong number of items \n");
+				exit(-1);
+			}
+			while(getchar() != '\n');		//cleaning the stdin buffer
+			switch(command){
+				case 1:		//online people
+					break;
+				case 2:		//request to talk
+					break;
+				case 3:		//logout
+					break;
+				default:
+					perror("The inserted command is not valid\n");
+					break;
+			}
+		}
+		else if(FD_ISSET(socket, &readFdSet)){
+			//a request to talk has arrived
 		}
 	}
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
+	close(socket);
 	return 0;
 }
