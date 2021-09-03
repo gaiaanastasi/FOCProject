@@ -122,7 +122,7 @@ static DH *get_dh2048(void)
     return dh;
 }
 
-//function that generates Diffie-Hellman private key
+//function that allocates and generates Diffie-Hellman private key
 EVP_PKEY* generateDHParams(){
 	int ret;
 	EVP_PKEY* DHparams;
@@ -161,32 +161,46 @@ EVP_PKEY* generateDHParams(){
 	return dhPrivateKey;
 }
 
-//Function that returns the serialization of a DH public key
+//Function that allocates and returns the serialization of a DH public key
 unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
 	BIO* myBio;
+	int ret;
 	unsigned char* buffer;
 	myBio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PUBKEY(myBio, privK);
+	if(myBio == NULL)
+		return NULL;
+	ret = PEM_write_bio_PUBKEY(myBio, privK);
+	if(ret != 1)
+		return NULL;
 	buffer = NULL;
 	*bufferLen = BIO_get_mem_data(myBio, &buffer);
 	buffer = (unsigned char*) malloc(*bufferLen);
-	BIO_read(myBio, (void*) buffer, *bufferLen);
+	ret = BIO_read(myBio, (void*) buffer, *bufferLen);
+	if(ret <= 0)
+		return NULL;
 	BIO_free(myBio);
 	return buffer;
 }
 
-//Function that returns the deserialized DH public key
+//Function that allocates and returns the deserialized DH public key
 EVP_PKEY* deserializeDHpublicKey(unsigned char* buffer, int bufferLen){
 	EVP_PKEY* pubKey;
+	int ret;
 	BIO* myBio;
 	myBio = BIO_new(BIO_s_mem());
-	BIO_write(myBio, buffer, bufferLen);
+	if(myBio == NULL)
+		return NULL;
+	ret = BIO_write(myBio, buffer, bufferLen);
+	if(ret <= 0)
+		return NULL;
 	pubKey = PEM_read_bio_PUBKEY(myBio, NULL, NULL, NULL);
+	if(pubKey == NULL)
+		return NULL;
 	BIO_free(myBio);
 	return pubKey;
 }
 
-//Function that derive a symmetric key for aes_128_gcm by means of the DH shared secret, derived by using the two keys. It returns NULL in case of error
+//Function that allocates and derive a symmetric key for aes_128_gcm by means of the DH shared secret, derived by using the two keys. It returns NULL in case of error
 unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY* pubK){
 	unsigned char* secret;
 	int secretLen;
@@ -263,7 +277,7 @@ bool verifyCertificate(X509_STORE* certStore, X509* certificate){
 	return true;
 }
 
-//function that takes a plaintext and returns a message formatted like { <encrypted_key> | <IV> | <ciphertext> } in an asimmetric encryption
+//Function that takes a plaintext and allocates and returns a message formatted like { <encrypted_key> | <IV> | <ciphertext> } in an asimmetric encryption and store its length in dimM. Return NULL in case of error
 unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey, int* dimM){
 	int ret;
 	int dimB = 0;
@@ -350,7 +364,7 @@ bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, un
 	return true;
 }*/
 
-//subdivide the received message (formatted { <encrypted_key> | <IV> | <ciphertext> }) into the three parts that are needed for the asymmetric decryption
+//takes the received message (formatted { <encrypted_key> | <IV> | <ciphertext> }) and allocates and returns the respective plaintext and stores its length in pt_len. Return NULL in case of error
 unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, int* pt_len, EVP_PKEY* prvKey){
 	int ret;
 	unsigned char* pt = NULL;
@@ -389,7 +403,7 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	if(ret == 0)
 		return NULL;
 	ndtot += nd;
-	ret = EVP_OpenFinal(ctx, (pt) + ndtot, &nd);
+	ret = EVP_OpenFinal(ctx, pt + ndtot, &nd);
 	if(ret == 0)
 		return NULL;
 	ndtot += nd;
