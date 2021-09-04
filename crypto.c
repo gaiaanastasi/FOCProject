@@ -210,8 +210,8 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	int keyLen;
 	EVP_MD_CTX* Hctx;
 	EVP_PKEY_CTX* derive_ctx;
-	EVP_CIPHER* cipher;
 	int ret;
+	const EVP_CIPHER* cipher = EVP_aes_128_gcm();;
 	//secret derivation
 	derive_ctx = EVP_PKEY_CTX_new(privK, NULL);
 	if(derive_ctx == NULL)
@@ -241,7 +241,6 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	if(ret != 1)
 		return NULL;
 	EVP_MD_CTX_free(Hctx);
-	cipher = EVP_aes_128_gcm();
 	keyLen = EVP_CIPHER_key_length(cipher);
 	EVP_CIPHER_free(cipher);
 	key = (unsigned char*) malloc(keyLen);
@@ -289,7 +288,7 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
 	unsigned char* message = NULL;
 	int nc = 0;		//bytes encrypted at each chunk
 	int nctot = 0;	//total encrypted bytes
-	EVP_CIPHER* cipher = EVP_aes_128_cbc();
+	const EVP_CIPHER* cipher = EVP_aes_128_cbc();
 	encrypted_key_len = EVP_PKEY_size(pubkey);
 	iv_len = EVP_CIPHER_iv_length(cipher);
 	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
@@ -319,7 +318,6 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
    	memset(pt, 0, pt_len);
 #pragma optimize("", on)
    	free(pt);
-	EVP_CIPHER_free(cipher);
 
 	//message constitution
 	sumControl(encrypted_key_len, iv_len);
@@ -335,7 +333,7 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
 	free(ciphertext);
    	return message;
 }
-*/
+
 /*
 //function that store the plaintext, given the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
 bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int cpt_len, EVP_PKEY* prvKey){
@@ -375,23 +373,23 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	int nd = 0; 	// bytes decrypted at each chunk
    	int ndtot = 0; 	// total decrypted bytes
 	EVP_CIPHER_CTX* ctx;
-	EVP_CIPHER* cipher = EVP_aes_128_cbc(); 
-	encrypted_key_len = EVP_PKEY_size(privKey);
+	const EVP_CIPHER* cipher = EVP_aes_128_cbc(); 
+	encrypted_key_len = EVP_PKEY_size(prvKey);
 	iv_len = EVP_CIPHER_iv_length(cipher);
 	sumControl(encrypted_key_len, iv_len);
 	//check for correct format of the encrypted file
-	if(recv_len < encrypted_key_len + iv_len)
+	if(messageLen < encrypted_key_len + iv_len)
 		return NULL;
 	encrypted_key = (unsigned char*) malloc(encrypted_key_len);
 	iv = (unsigned char*) malloc(iv_len);
-	cpt_len = recv_len - encrypted_key_len - iv_len;	//possible overflow already controlled
+	cpt_len = messageLen - encrypted_key_len - iv_len;	//possible overflow already controlled
 	cpt = (unsigned char*) malloc(cpt_len);
 	pt = (unsigned char*) malloc(cpt_len);
 	if(!iv || !encrypted_key || !cpt || !pt)
 		return NULL;
-	extract_data_from_array(encrypted_key, message_recv, 0, encrypted_key_len);
-	extract_data_from_array(iv, message_recv, encrypted_key_len, iv_len);
-	extract_data_from_array(cpt, message_recv, encrypted_key_len + iv_len, cpt_len);
+	extract_data_from_array(encrypted_key, message, 0, encrypted_key_len);
+	extract_data_from_array(iv, message, encrypted_key_len, iv_len);
+	extract_data_from_array(cpt, message, encrypted_key_len + iv_len, cpt_len);
 	//decryption
 	ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
@@ -409,10 +407,9 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	ndtot += nd;
 	*pt_len = ndtot;
 	EVP_CIPHER_CTX_free(ctx);
-	EVP_CIPHER_free(cipher);
 	free(encrypted_key);
 	free(iv);
-	free(ciphertext);
+	free(cpt);
 	return pt;	
 
 }

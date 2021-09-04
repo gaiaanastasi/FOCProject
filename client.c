@@ -9,18 +9,16 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "crypto.c"
-#include "utility.c"
 
 const int port_address = 4242;
-const char ip_address[16] = "127.0.0.1"
-const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n
-									(4) to log out\n\n What do you want to do? ";
-const int DIM_USERNAME = 32;
-const int DIM_PASSWORD = 32;
+const char ip_address[16] = "127.0.0.1";
+const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
 
 int main(int argc, const char** argv){
-	int socket;
+	int sock;				//socket identifier
+    struct sockaddr_in srv_addr;
 	int ret;				//it will contain different integer return values (used for checking)
 	size_t command;			//command typed by the user
 	unsigned char* message_recv;
@@ -55,12 +53,12 @@ int main(int argc, const char** argv){
 	fd_set readFdSet;			//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
 	//socket creation and instantiation
-	socket = socket(AF_INET, SOCK_STREAM, 0);
+	sock = socket(AF_INET, SOCK_STREAM, 0);
 	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia
 	srv_addr.sin_family = AF_INET;
-	srv_addr.sin_port = htons(atoi(port_address));
+	srv_addr.sin_port = htons(port_address);
 	inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
-    ret = connect(socket, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
+    ret = connect(sock, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
 	if(ret < 0){
 		perror("An error occured during the connection phase \n");
 		exit(-1);
@@ -75,7 +73,7 @@ int main(int argc, const char** argv){
 	}
 	charPointer = strchr(username, '\n');
 	if(charPointer)
-		*p = '\0';
+		*charPointer = '\0';
 	printf("Insert your password:\t");
 	if(fgets(password, DIM_PASSWORD, stdin) == NULL){
 		perror("Error during the reading from stdin\n");
@@ -83,7 +81,7 @@ int main(int argc, const char** argv){
 	}
 	charPointer = strchr(password, '\n');
 	if(charPointer)
-		*p = '\0';
+		*charPointer = '\0';
 	
 	//LOADING PRIVATE KEY
 	strcpy(fileName, "keys/");
@@ -135,17 +133,16 @@ int main(int argc, const char** argv){
 		perror("Error during the creation of the store\n");
 		exit(-1);
 	}
-	ret = x509_STORE_add_cert(certStore, CACertificate);
+	ret = X509_STORE_add_cert(certStore, CACertificate);
 	if(ret != 1){
 		perror("Error during the adding of a certificate\n");
 		exit(-1);
 	}
 
 	//AUTHENTICATION WITH THE SERVER
-	recv_len = receive_len(socket);
+	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
-	receive_obj(socket, message_recv, recv_len);
-	serverNonce = (unsigned char*) malloc(DIM_NONCE);
+	receive_obj(sock, message_recv, recv_len);
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
@@ -194,7 +191,7 @@ int main(int argc, const char** argv){
 	message_send = (unsigned char*) malloc(send_len);
 	concat2Elements(message_send, opBuffer, signature, dimOpBuffer, signatureLen);
 
-	send_obj(socket, message_send, send_len);
+	send_obj(sock, message_send, send_len);
 	free(message_send);
 	send_len = 0;
 
@@ -230,16 +227,16 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	// <encrypted_key> | <IV> | <ciphertext>
-	send_obj(socket, message_send, send_len);
+	send_obj(sock, message_send, send_len);
 
 	//plaintext already freed by from_pt_to_DigEnv()
 	free(message_send);
 	send_len = 0;
 
 	//RECEIVING DH PUBLIC KEY OF THE SERVER
-	recv_len = receive_len(socket);
+	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
-	receive_obj(socket, message_recv, recv_len);
+	receive_obj(sock, message_recv, recv_len);
 
 	//asymmetric decryption
 	plaintext = from_DigEnv_to_PlainText(message_recv, recv_len, &pt_len, myPrivK);
@@ -274,7 +271,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY_free(serverPubK);
 	EVP_PKEY_free(DHServerPubK);
 	EVP_PKEY_free(dhPrivateKey);
-	free(buffer);
+	free(opBuffer);
 	dimOpBuffer = 0;
 	free(plaintext);
 	free(message_recv);
@@ -285,15 +282,15 @@ int main(int argc, const char** argv){
 		printf("%s", commandMessage);
 		FD_ZERO(&readFdSet);		//cleaning the set
 		FD_SET(0, &readFdSet);		//stdin added to the set
-		FD_SET(socket, &readFdSet);		//socket added to the set
-		ret = select(socket + 1, &readFdSet, NULL, NULL, NULL);
+		FD_SET(sock, &readFdSet);		//sock added to the set
+		ret = select(sock + 1, &readFdSet, NULL, NULL, NULL);
 		if(ret < 0){
 			perror("Error during select()\n");
 			exit(-1);
 		}
 		if(FD_ISSET(0, &readFdSet)){
 			//the user has typed something
-			if(scanf("%1d", &command) =! 1){
+			if(scanf("%1ld", &command) != 1){
 				perror("scanf function has read a wrong number of items \n");
 				exit(-1);
 			}
@@ -310,13 +307,13 @@ int main(int argc, const char** argv){
 					break;
 			}
 		}
-		else if(FD_ISSET(socket, &readFdSet)){
+		else if(FD_ISSET(sock, &readFdSet)){
 			//a request to talk has arrived
 		}
 	}
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
-	close(socket);
+	close(sock);
 	return 0;
 }
