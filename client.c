@@ -8,6 +8,7 @@
 #include <openssl/x509_vfy.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rand.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include "crypto.c"
@@ -75,13 +76,17 @@ int main(int argc, const char** argv){
 	if(charPointer)
 		*charPointer = '\0';
 	printf("Insert your password:\t");
-	if(fgets(password, DIM_PASSWORD, stdin) == NULL){
+	getPassword(password);
+	/*if(fgets(password, DIM_PASSWORD, stdin) == NULL){
 		perror("Error during the reading from stdin\n");
 		exit(-1);
 	}
 	charPointer = strchr(password, '\n');
 	if(charPointer)
-		*charPointer = '\0';
+		*charPointer = '\0';*/
+	
+	printf("\nRequest sended\n");
+	
 	
 	//LOADING PRIVATE KEY
 	strcpy(fileName, "keys/");
@@ -98,6 +103,8 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	fclose(file);
+	
+	printf("Prvkey loaded\n");
 
 	//LOADING PUBLIC KEY
 	strcpy(fileName, "keys/");
@@ -114,6 +121,8 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	fclose(file);
+	
+	printf("Prvkey loaded\n");
 
 	//CERTIFICATE STORE CREATION
 	strcpy(fileName, "certificates/CA_cert.pem");
@@ -138,43 +147,56 @@ int main(int argc, const char** argv){
 		perror("Error during the adding of a certificate\n");
 		exit(-1);
 	}
+	
+	printf("Store certificate created\n");
 
 	//AUTHENTICATION WITH THE SERVER
 	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
 	receive_obj(sock, message_recv, recv_len);
+	printf("Message from server received\n");
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
 		exit(-1);
 	}
+	printf("Got server nonce\n");
 	dimOpBuffer = recv_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc((dimOpBuffer));
+	//extract_data_from_array(opBuffer, message_recv, 0, recv_len);
 	extract_data_from_array(opBuffer, message_recv, DIM_NONCE, recv_len);	//opBuffer will contain the serialized certificate of the server
+	printf("Got server certificate\n");
 	if(opBuffer == NULL){
 		perror("Error during the extraction of the certificate of the server\n");
 		exit(-1);
 	}
 	serverCertificate = d2i_X509(NULL, (const unsigned char**)&opBuffer, dimOpBuffer);
+	//serverCertificate = d2i_X509(NULL, (const unsigned char**)&message_recv, recv_len);
+	printf("Certificate deserialized\n");
 	if(serverCertificate == NULL){
 		perror("Error during deserialization of the certificate of the server\n");
 		exit(-1);
 	}
 
 	//now that I have the certificate, its serialization is useless
-	free(opBuffer);
+	printf("Hi\n");
+	OPENSSL_free(opBuffer);
+	//free(message_recv);
+	printf("not here\n");
 	dimOpBuffer = 0;
+	printf("free\n");
 	//certificate verification
-	if(!verifyCertificate(certStore, serverCertificate)){
+	/*if(!verifyCertificate(certStore, serverCertificate)){
 		perror("Error during verification of the server certificate\n");
 		exit(-1);
 	}
-
+	printf("verifyCertificate\n");
 	serverPubK = X509_get_pubkey(serverCertificate);
 	if(serverPubK == NULL){
 		perror("Error during the extraction of the public key of the server from its certificate\n");
 		exit(-1);
 	}
+	printf("almost there\n");
 	//now that I have the public key of the server, the certificate is useless
 	X509_free(serverCertificate);
 	free(message_recv);
@@ -194,6 +216,7 @@ int main(int argc, const char** argv){
 	send_obj(sock, message_send, send_len);
 	free(message_send);
 	send_len = 0;
+	printf("Message sent to the server \n");
 
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	
@@ -314,6 +337,8 @@ int main(int argc, const char** argv){
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
+	*/
+	printf("Authentication succeded\n");
 	close(sock);
 	return 0;
 }

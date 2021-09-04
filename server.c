@@ -21,10 +21,13 @@
 #define DIM_SUFFIX_FILE_PUBKEY 12
 #define DIM_SUFFIX_FILE_PRIVKEY 13
 #define DIM_PASSWORD 32
-#define DIR_SIZE 14
-#define DIR "/keys/public/"
+#define DIR_SIZE 6
+#define DIR "/keys/"
 #define DIM_NONCE 16
 #define DIM_USERNAME 32
+
+char* server_port = "4242";
+
 
 
 unsigned char myNonce[DIM_NONCE];
@@ -131,7 +134,7 @@ void handle_logout(int sock){
 X509* getServerCertificate (){
 	///GET THE CERTIFICATE FROM PEM FILE
 	X509* cert;
-	FILE* file = fopen("server_cert.pem", "r");
+	FILE* file = fopen("certificates/server_cert.pem", "r");
 	if(!file){
 		perror("fopen");
 		exit(-1);
@@ -150,9 +153,11 @@ X509* getServerCertificate (){
 void handle_auth(int sock, bool* users_online){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
+	printf("In handle_auth\n");
 	generateNonce(myNonce);
 	
 	X509* cert = getServerCertificate();
+
 
 	//Send a certification over a socket
 
@@ -175,14 +180,17 @@ void handle_auth(int sock, bool* users_online){
 	concat2Elements(msg, myNonce, cert_buf, DIM_NONCE, cert_size);
 	
 	OPENSSL_free(cert_buf);
+	//send_obj(sock, cert_buf, cert_size);
 	send_obj(sock, msg, size_msg);
+	printf("Certificate and nonce sended to the client \n");
 	
-	//Receive signed nonce from client
+	/*//Receive signed nonce from client
 	int signed_size = receive_len(sock);
 	sumControl(signed_size, 1);
 	unsigned char signed_msg[signed_size];
 	receive_obj(sock, signed_msg, signed_size); 
-	
+	printf("Get signed nonce by username\n");
+	/*
 	//Get the nonce and the username from the message I have received
 	unsigned char get_username[DIM_USERNAME];
 	extract_data_from_array(signed_msg, get_username, 0, DIM_USERNAME);
@@ -231,7 +239,7 @@ void handle_auth(int sock, bool* users_online){
 	//Update online users' list
 	addUsertoList(get_username, users_online );
 	
-		
+	*/	
 
 }
 
@@ -244,11 +252,11 @@ int main (int argc, const char** argv){
 		perror("Socket");
 		exit(-1);
 	}
-	else printf("Apertura del socket di ascolto \n");
+	else printf("Listening socket opened \n");
 	struct sockaddr_in indirizzo_server;
 	//Parameters for server socket
 	memset(&indirizzo_server, 0, sizeof(indirizzo_server));		//Clean 
-	int porta = atoi(argv[1]);
+	int porta = atoi(server_port);
 	indirizzo_server.sin_family = AF_INET;
 	indirizzo_server.sin_port = htons(porta);
 	indirizzo_server.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -276,7 +284,7 @@ int main (int argc, const char** argv){
 		exit(-1);
 	}
 
-	printf("Server in ascolto \n");
+	printf("Server in listening \n");
 	fd_set master; 		//Main set 
 	fd_set read_ready;	//Read set
 	int fdmax;			//Max number of descriptors
@@ -293,11 +301,11 @@ int main (int argc, const char** argv){
 	FD_SET(socket_ascolto, &read_ready);
 
 	bool* users_online = (bool*) mmap(NULL, TOT_USERS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);	
-	int fd = open(argv[1], O_RDONLY);
+	/*int fd = open(argv[1], O_RDONLY);
 	if(fd==-1){
 		perror("Open fail");
 		exit(-1);
-	}
+	}*/
 	
 	if (users_online == MAP_FAILED){
 		perror("MAP_FAILED");
@@ -338,6 +346,9 @@ int main (int argc, const char** argv){
 					FD_SET(socket_com, &master);	//Add the new socket to the main set
 					if (socket_com > socket_ascolto) fdmax = socket_com;
 					
+					printf("Authentication request arrived\n");
+						
+					handle_auth(socket_com, users_online);
 					
 					
 				}
@@ -350,7 +361,7 @@ int main (int argc, const char** argv){
 					else if (pid == 0){		//I am in the child process
 						close(socket_ascolto);
 						
-						handle_auth(socket_com, users_online);
+						
 						
 						/*//EDHKE
 						EVP_PKEY* params = EVP_PKEY_new();

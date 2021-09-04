@@ -9,8 +9,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <termios.h>
 
 #define TOT_USERS 2
+#define DIM_PASSWORD 32
 
 int receive_len (int socket_com){
 //Receive the length of the message via socket
@@ -61,6 +63,7 @@ void send_obj (int sock, unsigned char* buf, size_t len){
 //return a portion of the src array
 //l'array ritornato è una porzione di src che va da src[start] a src[end - 1]
 void extract_data_from_array(unsigned char* dest, unsigned char* src, int start, int end){
+	printf("I went here\n");
 	int i,j;
 	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
 		perror("wrong parameters");
@@ -73,10 +76,13 @@ void extract_data_from_array(unsigned char* dest, unsigned char* src, int start,
 		dest = NULL;
 		return;
 	}
-	for(i = start; i < end; i++){
+	/*for(i = start; i < end; i++){
 		dest[j] = src[i];
 		j++;
-	}
+	}*/
+	
+	memset(dest, 0, end-start);
+	memcpy(dest, src+start, end-start);
 }
 
 //return if the sum between the two elements doesn't cause overflow
@@ -89,6 +95,11 @@ void sumControl(int a, int b){
 }
 
 void subControlInt(int a, int b){
+	if(a <0 || b>0){
+		perror("integer overflow");
+		exit(-1);
+	}
+
 	if (a > b){
 		perror("integer overflow");
 		exit(-1);
@@ -103,5 +114,41 @@ void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* sr
 	memcpy(dest, src1, len1);
 	memcpy(dest + len1, src2, len2);
 }
+
+void getPassword(unsigned char* password){
+	struct termios old, new;
+	int nread;
+
+	/* Turn echoing off and fail if we can't. */
+	if (tcgetattr (fileno (stdin), &old) != 0){
+		perror("Error while getting the password");
+		exit(-1);
+	}
+	new = old;
+	new.c_lflag &= ~ECHO;
+	if (tcsetattr (fileno (stdin), TCSAFLUSH, &new) != 0){
+		perror("Error while getting the password");
+		exit(-1);
+	}
+		
+
+	/* Read the password. */
+	if(fgets(password, DIM_PASSWORD, stdin) == NULL){
+		perror("Error during the reading from stdin\n");
+		exit(-1);
+	}
+	char* charPointer = strchr(password, '\n');
+	if(charPointer)
+		*charPointer = '\0';
+
+	/* Restore terminal. */
+	if(tcsetattr (fileno (stdin), TCSAFLUSH, &old)){
+		perror("Error while getting the password");
+		exit(-1);
+	}
+	printf("\n");
+
+}
+
 
 
