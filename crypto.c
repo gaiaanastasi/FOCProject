@@ -242,7 +242,6 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 		return NULL;
 	EVP_MD_CTX_free(Hctx);
 	keyLen = EVP_CIPHER_key_length(cipher);
-	EVP_CIPHER_free(cipher);
 	key = (unsigned char*) malloc(keyLen);
 	if(!memcpy(key, digest, keyLen))
 		return NULL;

@@ -7,7 +7,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <cstring>
+#include <string.h>
 #include <stdbool.h>
 
 #define TOT_USERS 2
