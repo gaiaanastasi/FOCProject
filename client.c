@@ -297,10 +297,23 @@ int main(int argc, const char** argv){
 			while(getchar() != '\n');		//cleaning the stdin buffer
 			switch(command){
 				case 1:		//online people
+					send_len = strlen("online_people") + 1;
+					message_send = (unsigned char*) malloc(send_len);
+					strcpy(message_send, "online_people");
+					send_obj(sock, message_send, send_len);
+					recv_len = receive_len(sock);
+					message_recv = (unsigned char*) malloc(recv_len);
+					receive_obj(sock, message_recv, recv_len);
+					printf("%s", message_recv);
+					free(message_recv);
+					free(message_send);
+					send_len = 0;
+					recv_len = 0;
 					break;
 				case 2:		//request to talk
 					break;
 				case 3:		//logout
+					printf("Logging out\n");
 					break;
 				default:
 					perror("The inserted command is not valid\n");
@@ -309,6 +322,11 @@ int main(int argc, const char** argv){
 		}
 		else if(FD_ISSET(sock, &readFdSet)){
 			//a request to talk has arrived
+			recv_len = receive_len(sock);
+			message_recv = (unsigned char*) malloc(recv_len);
+			receive_obj(sock, message_recv, recv_len);
+			//the message is encrypted by means of the symmetric key used by server and client
+			
 		}
 	}
 	EVP_PKEY_free(myPrivK);
