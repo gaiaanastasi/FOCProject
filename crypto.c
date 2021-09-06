@@ -476,7 +476,7 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	return outBuffer;
 }
 
-//function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext
+//function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext. It returns NULL in case of error
 unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, int *plaintext_len, unsigned char* key)
 {
     EVP_CIPHER_CTX *ctx;

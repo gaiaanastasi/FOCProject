@@ -13,18 +13,14 @@
 #include <unistd.h>
 #include "crypto.c"
 
-#define DIM_SUFFIX_FILE_PUBKEY 12
-#define DIM_SUFFIX_FILE_PRIVKEY 13
-#define DIM_PASSWORD 32
-#define DIR_SIZE 6
-
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
 const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
 
 //Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
-//has requested the communication and so it has to start it by generating and sending the nonce. If it is false, it has to wait the nonce itself 
-void communication_with_other_client(int sock, unsigned char* serializedPubKey, int keyLen, EVP_PKEY* myPrivK, bool requestingClient){
+//has requested the communication and so it has to start it by generating and sending the nonce. If it is false, it has to wait the nonce itself.
+//It returns true if the user wanted to leave the conversation, false otherwise
+void communication_with_other_client(int sock, unsigned char* serializedPubKey, int keyLen, EVP_PKEY* myPrivK, bool requestingClient, char* clientUsername, unsigned char* serverSimKey){
 	unsigned char clientNonce[DIM_NONCE];		//fresh nonce used for communication with the other client
 	EVP_PKEY* clientPubK;						//Public key of the client with wich I want to talk
 	EVP_PKEY* dhPrivateKey;			//Diffie-Hellman private key
@@ -33,10 +29,11 @@ void communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	int dimOpBuffer = 0;			//length of the content of opBuffer	
 	unsigned char* plaintext;
 	int pt_len;						//length of the plaintext
-	unsigned char* ciphertext;		//result of the encryption of the message that has to be sent
-	int cpt_len = 0;				//length of the cyphertext
+	unsigned char* message;	//message that has to be sent
+	int msg_len = 0;				//length of the message to be sent
 	unsigned char* simKey;			//simmetric key
-	unsigned char* charPointer;
+	unsigned char* charPointer;		//generic char pointer 
+	fd_set readSet;					//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
 	clientPubK = deserializePublicKey(serializedPubKey, keyLen);
 	if(clientPubK == NULL){
@@ -100,18 +97,94 @@ void communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	free(plaintext);
 	pt_len = dimOpBuffer = 0;
 
-	//USO I SET PER FARE CONVERSAZIONE BELLA???!?
+	printf("Now you are ready to talk with %s. You can leave the conversation whenever you want by logging you out by typing '<exit>'\n", clientUsername);
 
-	if(requestingClient){
-		printf("Now you can start the conversation by writing your message!\n");
-		if(fgets(opBuffer, 256, stdin) == NULL){
-			perror("Error during the reading from stdin\n");
+	//the user can both wait for a new message or type its own message to send it to the other user
+	while(1){
+		FD_ZERO(&readSet);		//cleaning the set
+		FD_SET(0, &readSet);		//stdin added to the set
+		FD_SET(sock, &readSet);		//sock added to the set
+		ret = select(sock + 1, &readSet, NULL, NULL, NULL);
+		if(ret < 0){
+			perror("Error during select()\n");
 			exit(-1);
 		}
-		charPointer = strchr(opBuffer, '\n');
-		if(charPointer)
-			*charPointer = '\0';
+		if(FD_ISSET(0, readSet)){
+			//the user has typed something
+			if(fgets(plaintext, 256, stdin) == NULL){
+				perror("Error during the input of the message");
+				exit(-1);
+			}
+			charPointer = strchr(plaintext, '\n');
+			if(charPointer)
+				*charPointer = '\0';
+
+			//control if the user want to leave the conversation
+			if(strcmp(plaintext, "<exit>") == 0){
+				dimOpBuffer = strlen("<exit>") + 1;
+				opBuffer = (unsigned char*) malloc(dimOpBuffer);
+				strcpy(opBuffer, "<exit>");
+				message = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &msg_len);
+				if(message == NULL){
+					perror("Error during encryption of the message");
+					exit(-1);
+				}
+				send_obj(sock, message, msg_len);
+				free(message);
+				free(plaintext);
+				free(opBuffer);
+				return true;
+			}
+
+			//encryption and sending of the message
+			pt_len = strlen(plaintext) + 1;
+			message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
+			if(message == NULL){
+				perror("Error during the encryption of the message");
+				exit(-1);
+			}
+			send_obj(sock, message, msg_len);
+			printf("\nmessage sent");
+			free(message);
+			free(plaintext);
+			msg_len = 0;
+			pt_len = 0;
+		} else if(FD_ISSET(sock, &readSet)){
+			//the user received a new message
+			msg_len = receive_len(sock);
+			message = (unsigned char*) malloc(msg_len);
+			receive_obj(sock, message, msg_len);
+			//we have to check if the message has been sent by the server. In such a case, it means that the plaintext is "<exit>"
+			//and it means that the other client has logged off
+			plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey);
+			if(plaintext == NULL){
+				perror("Error during the decription of the message");
+				exit(-1);
+			}
+			if(strcmp(plaintext, "<exit>") == 0){
+				printf("\n%s has logged off\n", clientUsername);
+				return false;
+			}
+			free(plaintext);
+			pt_len = 0;
+			plaintext = symmetricDecription(message, msg_len, &pt_len, simKey);
+			if(plaintext == NULL){
+				perror("Error during the decription of the message");
+				exit(-1);
+			}
+			if(pt_len > 256){
+				perror("The received message is too long");
+				exit(-1);
+			}
+			printf("\n");
+			printf("%s: ", clientUsername);
+			printf("%s\n", plaintext);
+			free(plaintext);
+			free(message);
+			pt_len = msg_len = 0;
+		}
 	}
+	return false;
 }
 
 int main(int argc, const char** argv){
@@ -148,6 +221,7 @@ int main(int argc, const char** argv){
 	int signatureLen;			//len of the signature
 	FILE* file = NULL;			//generic file pointer used in different parts of the code
 	fd_set readFdSet;			//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
+	int continueWhile = 1;		//it remains equal to 1 until the user decide to log out 
 
 	
 	//log in of the user
@@ -188,12 +262,9 @@ int main(int argc, const char** argv){
 	
 	
 	//LOADING PRIVATE KEY
-	int lim = DIR_SIZE;//-1;
-	strncpy(fileName, "keys/", lim );
-	lim = DIM_USERNAME;//-1;
-	strncat(fileName, username, lim );
-	lim = DIM_SUFFIX_FILE_PRIVKEY;//-1;
-	strncat(fileName, "_privkey.pem", lim);
+	strcpy(fileName, "keys/");
+	strcat(fileName, username);
+	strcat(fileName, "_privkey.pem");
 	file = fopen(fileName, "r");
 	if(file == NULL){
 		perror("Error during the opening of a file\n");
@@ -208,7 +279,7 @@ int main(int argc, const char** argv){
 	
 	
 
-	/*//LOADING PUBLIC KEY
+	//LOADING PUBLIC KEY
 	strcpy(fileName, "keys/");
 	strcat(fileName, username);
 	strcat(fileName, "_pubkey.pem");
@@ -255,11 +326,8 @@ int main(int argc, const char** argv){
 	//RECEIVING THE NONCE AND THE CERTIFICATE
 	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
-	if(!recv_len){
-		perror("Error during the adding of a certificate\n");
-		exit(-1);
-	}
 	receive_obj(sock, message_recv, recv_len);
+	printf("Message from server received\n");
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
@@ -288,8 +356,8 @@ int main(int argc, const char** argv){
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
 	//free(opBuffer);
 	dimOpBuffer = 0;
+	//certificate verification
 	
-	//CERTIFICATE VERIFICATION
 	if(!verifyCertificate(certStore, serverCertificate)){
 		perror("Error during verification of the server certificate\n");
 		exit(-1);
@@ -305,20 +373,7 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
-	/*dimOpBuffer = DIM_NONCE; 
-	unsigned char* opBuffer2 = (unsigned char*) malloc(dimOpBuffer);
-	if(!opBuffer2){
-		perror("malloc");
-		exit(-1);
-	}
-	memset(opBuffer2, 0, dimOpBuffer);
-	memcpy(opBuffer2, serverNonce, dimOpBuffer);*/
-	//concat2Elements(opBuffer2, serverNonce, username, DIM_NONCE, DIM_USERNAME);
-	signature = (unsigned char*)malloc(EVP_PKEY_size(myPrivK));
-	if(!signature){
-		perror("malloc");
-		exit(-1);
-	}
+	signature = (unsigned char*) malloc(EVP_PKEY_size(myPrivK));
 	signatureFunction(serverNonce, DIM_NONCE, signature, &signatureLen, myPrivK);
 	sumControl(dimOpBuffer, signatureLen);
 	unsigned char* buf = (unsigned char*) malloc(DIM_NONCE+signatureLen);
@@ -331,17 +386,11 @@ int main(int argc, const char** argv){
 	sumControl(DIM_USERNAME, signatureLen+DIM_NONCE);
 	send_len = DIM_USERNAME +  signatureLen + DIM_NONCE;
 	message_send = (unsigned char*) malloc(send_len);
-	if(!message_send){
-		perror("malloc");
-		exit(-1);
-	}
-	concat2Elements(message_send, username, buf, DIM_USERNAME, signatureLen+DIM_NONCE);
-	
-
+	memcpy(message_send, username, DIM_USERNAME);
+	concat2Elements(message_send, serverNonce, DIM_USERNAME, DIM_NONCE);
+	concat2Elements(message_send, signature, DIM_NONCE + DIM_USERNAME, signatureLen);
 	send_obj(sock, message_send, send_len);
 	free(message_send);
-	free(buf);
-	free(signature);
 	send_len = 0;
 	signatureLen = 0;
 
@@ -445,7 +494,7 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	printf("Hi! This is a secure messaging system\n");
-	while(1){
+	while(continueWhile){
 		printf("%s", commandMessage);
 		FD_ZERO(&readFdSet);		//cleaning the set
 		FD_SET(0, &readFdSet);		//stdin added to the set
@@ -477,6 +526,7 @@ int main(int argc, const char** argv){
 					send_len = 0;
 					recv_len = 0;
 					break;
+
 				case 2:		//request to talk
 					printf("who do you want to send the request to?\n");
 					opBuffer = (unsigned char*) malloc(DIM_USERNAME);
@@ -509,17 +559,18 @@ int main(int argc, const char** argv){
 					}
 
 					//request accepted, the plaintext is the public key of the client
+					if(communication_with_other_client(sock, plaintext, pt_len, myPrivK, true, opBuffer, serverSymmetricKey)){
+						continueWhile = 0;
+					}
 					free(opBuffer);
 					dimOpBuffer = 0;
-					communication_with_other_client(sock, plaintext, myPrivK);
 					free(plaintext);
 					pt_len = 0;
-					
-
-
 					break;
+
 				case 3:		//logout
 					printf("Logging out\n");
+					continueWhile = 0;
 					break;
 				default:
 					perror("The inserted command is not valid\n");
@@ -538,8 +589,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
-	
-	
 	close(sock);
+	printf("\nBye Bye!\n");
 	return 0;
 }
