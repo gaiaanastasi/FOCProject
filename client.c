@@ -22,6 +22,98 @@ const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
 const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
 
+//Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
+//has requested the communication and so it has to start it by generating and sending the nonce. If it is false, it has to wait the nonce itself 
+void communication_with_other_client(int sock, unsigned char* serializedPubKey, int keyLen, EVP_PKEY* myPrivK, bool requestingClient){
+	unsigned char clientNonce[DIM_NONCE];		//fresh nonce used for communication with the other client
+	EVP_PKEY* clientPubK;						//Public key of the client with wich I want to talk
+	EVP_PKEY* dhPrivateKey;			//Diffie-Hellman private key
+	EVP_PKEY* dhClientPubK;			//Diffie-Hellman public key sent by the other client
+	unsigned char* opBuffer; 		//buffer used for different operations
+	int dimOpBuffer = 0;			//length of the content of opBuffer	
+	unsigned char* plaintext;
+	int pt_len;						//length of the plaintext
+	unsigned char* ciphertext;		//result of the encryption of the message that has to be sent
+	int cpt_len = 0;				//length of the cyphertext
+	unsigned char* simKey;			//simmetric key
+	unsigned char* charPointer;
+
+	clientPubK = deserializePublicKey(serializedPubKey, keyLen);
+	if(clientPubK == NULL){
+		perror("Error during deserialization of the publi key");
+		exit(-1);
+	}
+	if(requestingClient){
+		generateNonce(clientNonce);
+		send_obj(sock, clientNonce, DIM_NONCE);
+	}
+	else{
+		receive_obj(sock, clientNonce, DIM_NONCE);
+	}
+	dhPrivateKey = generateDHParams();
+	opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
+	concat2Elements(plaintext, clientNonce, opBuffer, DIM_NONCE, dimOpBuffer);
+	free(opBuffer);
+	dimOpBuffer = 0;
+	opBuffer = from_pt_to_DigEnv(plaintext, pt_len, clientPubK, &dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during asymmetric encryption");
+		exit(-1);
+	}
+	//I send a message { <nonce> | <serializedDHPublicKey> } encrypted by means of the client public key
+	send_obj(sock, opBuffer, dimOpBuffer);
+	free(plaintext);
+	pt_len = 0;
+	free(opBuffer);
+	dimOpBuffer = receive_len(sock);
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	receive_obj(sock, opBuffer, dimOpBuffer);
+	//I received a message { <nonce> | <serializedDHPublicKey> } encrypted by means of my public key
+	plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
+	if(plaintext == NULL){
+		perror("Error during the asymmetric decription");
+		exit(-1);
+	}
+	free(opBuffer);
+	dimOpBuffer = DIM_NONCE;
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	extract_data_from_array(opBuffer, plaintext, 0, DIM_NONCE);
+	if(memcmp(opBuffer, clientNonce, DIM_NONCE) != 0){
+		perror("The two nonces are not equal");
+		exit(-1);
+	}
+	free(opBuffer);
+	dimOpBuffer = pt_len - DIM_NONCE;
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
+	dhClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
+	if(dhClientPubK == NULL){
+		perror("Error occured by deserializing the DH public key");
+		exit(-1);
+	}
+	simKey = symmetricKeyDerivation_for_aes_128_gcm(myPrivK, dhClientPubK);
+	if(simKey == NULL){
+		perror("Error during the generation of the shared simmetric key");
+		exit(-1);
+	}
+	free(opBuffer);
+	free(plaintext);
+	pt_len = dimOpBuffer = 0;
+
+	//USO I SET PER FARE CONVERSAZIONE BELLA???!?
+
+	if(requestingClient){
+		printf("Now you can start the conversation by writing your message!\n");
+		if(fgets(opBuffer, 256, stdin) == NULL){
+			perror("Error during the reading from stdin\n");
+			exit(-1);
+		}
+		charPointer = strchr(opBuffer, '\n');
+		if(charPointer)
+			*charPointer = '\0';
+	}
+}
+
 int main(int argc, const char** argv){
 	int sock;				//socket identifier
     struct sockaddr_in srv_addr;
@@ -37,8 +129,7 @@ int main(int argc, const char** argv){
 	int pt_len = 0;			//length of the plaintext
 	unsigned char* serverSymmetricKey;
 	unsigned char* clientSimmetricKey;
-	unsigned char serverNonce[DIM_NONCE];
-	unsigned char clientNonce[DIM_NONCE];
+	unsigned char serverNonce[DIM_NONCE];		//fresh nonce used for communication with the server
 	X509* serverCertificate = NULL;
 	X509* CACertificate = NULL;
 	unsigned char* opBuffer; 		//buffer used for different operations
@@ -162,6 +253,7 @@ int main(int argc, const char** argv){
 	printf("Store certificate created\n");
 
 	//AUTHENTICATION WITH THE SERVER
+	//RECEIVING THE NONCE AND THE CERTIFICATE
 	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
 	if(!recv_len){
@@ -198,6 +290,7 @@ int main(int argc, const char** argv){
 
 	//now that I have the certificate, its serialization is useless
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
+	free(opBuffer);
 	dimOpBuffer = 0;
 	
 	//CERTIFICATE VERIFICATION
@@ -212,10 +305,10 @@ int main(int argc, const char** argv){
 	}
 	//now that I have the public key of the server, the certificate is useless
 	X509_free(serverCertificate);
-	//OPENSSL_free(opBuffer);
 	free(message_recv);
 	recv_len = 0;
 	printf("Creation of the response for the server\n");
+
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
 	/*dimOpBuffer = DIM_NONCE; 
 	unsigned char* opBuffer2 = (unsigned char*) malloc(dimOpBuffer);
@@ -255,6 +348,8 @@ int main(int argc, const char** argv){
 	free(buf);
 	free(signature);
 	send_len = 0;
+	free(signature);
+	signatureLen = 0;
 	printf("Message sent to the server \n");
 
 	
@@ -281,7 +376,7 @@ int main(int argc, const char** argv){
 	
 
 	//SERIALIZATION OF THE DH PUBLIC KEY
-	opBuffer = serializeDHpublicKey(dhPrivateKey, &dimOpBuffer);
+	opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
 	if(opBuffer == NULL){
 		perror("Error during serialization of the DH public key\n");
 		exit(-1);
@@ -340,7 +435,7 @@ int main(int argc, const char** argv){
 	dimOpBuffer = pt_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
-	DHServerPubK = deserializeDHpublicKey(opBuffer, dimOpBuffer);
+	DHServerPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(DHServerPubK == NULL){
 		perror("Error during deserialization of the DH public key\n");
 		exit(-1);
@@ -391,6 +486,45 @@ int main(int argc, const char** argv){
 					recv_len = 0;
 					break;
 				case 2:		//request to talk
+					printf("who do you want to send the request to?\n");
+					opBuffer = (unsigned char*) malloc(DIM_USERNAME);
+					fgets(opBuffer, DIM_USERNAME, stdin);
+					charPointer = strchr(opBuffer, '\n');
+					if(charPointer)
+						*charPointer = '\0';
+					sumControl(DIM_USERNAME, strlen("request") + 1);
+					pt_len = DIM_USERNAME + strlen("request") + 1;
+					plaintext = (unsigned char*) malloc(pt_len);
+					concat2Elements(plaintext, opBuffer, "request", DIM_USERNAME, strlen("request") + 1);
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					send_obj(sock, message_send, send_len);
+					send_len = 0;
+					free(message_send);
+					#pragma optimize("", off);
+						memset(plaintext, 0, pt_len);
+					#pragma optimize("", on);
+					free(plaintext);
+					pt_len = 0;
+					recv_len = receive_len(sock);
+					message_recv = (unsigned char*) malloc(recv_len);
+					receive_obj(sock, message_recv, recv_len);
+					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					if(strcmp(plaintext, "refused") == 0){
+						printf("Your request to talk with %s has been refused\n", opBuffer);
+						free(opBuffer);
+						dimOpBuffer = 0;
+						break;
+					}
+
+					//request accepted, the plaintext is the public key of the client
+					free(opBuffer);
+					dimOpBuffer = 0;
+					communication_with_other_client(sock, plaintext, myPrivK);
+					free(plaintext);
+					pt_len = 0;
+					
+
+
 					break;
 				case 3:		//logout
 					printf("Logging out\n");
