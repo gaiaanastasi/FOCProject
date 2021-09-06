@@ -115,6 +115,12 @@ void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* sr
 	memcpy(dest + len1, src2, len2);
 }
 
+//concat src at the end of dest
+void concat2Elements(unsigned char* dest, unsigned char* src, int destLen, int srcLen){
+	sumControl(destLen, srcLen);
+	memcpy(dest + destLen, src, srcLen);
+}
+
 void getPassword(unsigned char* password){
 	struct termios old, new;
 	int nread;

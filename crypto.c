@@ -33,7 +33,7 @@ void generateNonce(unsigned char* nonce){
 
 
 
-//function that return the store in signature the signature for a given plaintext and in signatureLen its length
+//function that return the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
     EVP_MD_CTX* signCtx = NULL;		//signature context
     int ret = 0;
@@ -428,6 +428,7 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 
 }
 
+/*
 //function for symmetric encryption
 bool symmetricEncryption(unsigned char* pt, int pt_len,  unsigned char* cpt, int* cpt_len, unsigned char* sessionkey){
 	
@@ -586,4 +587,93 @@ bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, in
    	free(aad);
    	return true;
 	
+}
+*/
+
+//function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }
+unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen)
+{
+    EVP_CIPHER_CTX *ctx;
+    int len = 0;
+	int ret = 0;
+    int ciphertext_len = 0;
+	unsigned char* outBuffer;
+	unsigned char* ciphertext = (unsigned char*) malloc(plaintext_len + DIM_TAG);
+	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
+	ret = RAND_bytes(&iv[0], DIM_IV);
+	if (ret!=1)
+		return NULL;
+	ret = EVP_CIPHER_CTX_new();
+    if(!ret)
+        return NULL;
+	ret = EVP_EncryptInit(ctx, EVP_aes_128_gcm(), key, iv);
+    if(1 != ret)
+        return NULL;
+	ret = EVP_EncryptUpdate(ctx, NULL, &len, AAD, DIM_AAD);
+    if(1 != ret)
+        return NULL;
+	ret = EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len);
+    if(1 != ret)
+        return NULL;
+    ciphertext_len = len;
+	ret = EVP_EncryptFinal(ctx, ciphertext + len, &len);
+    if(1 != ret)
+        return NULL;
+    ciphertext_len += len;
+	ret = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, tag);
+    if(1 != ret)
+        return NULL;
+    EVP_CIPHER_CTX_free(ctx);
+    *totalLen = ciphertext_len + DIM_TAG + DIM_IV + DIM_AAD;
+	outBuffer = (unsigned char*) malloc(*totalLen);
+	concat2Elements(outBuffer, iv, 0, DIM_IV);
+	concat2Elements(outBuffer, AAD, DIM_IV, DIM_AAD);
+	concat2Elements(outBuffer, tag, DIM_AAD + DIM_IV, DIM_TAG);
+	concat2Elements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
+	return outBuffer;
+}
+
+//function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext
+unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, int *plaintext_len, unsigned char* key)
+{
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int ret;
+	unsigned char* iv;
+	unsigned char* aad;
+	unsigned char* tag;
+	unsigned char* ciphertext;
+	int ciphertext_len = bufferLen - DIM_IV - DIM_AAD - DIM_TAG;
+	unsigned char* plaintext;
+	unsigned char* buffer = (unsigned char*) malloc(ciphertext_len);
+	//extract informations
+	iv = (unsigned char*) malloc(DIM_IV);
+	aad = (unsigned char*) malloc(DIM_AAD);
+	tag = (unsigned char*) malloc(DIM_TAG);
+	extract_data_from_array(iv, recv_buffer, 0, DIM_IV);
+	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_AAD);
+	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_TAG);
+	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, ciphertext_len);
+
+    if(!(ctx = EVP_CIPHER_CTX_new()))
+        handleErrors();
+    if(!EVP_DecryptInit(ctx, EVP_aes_128_gcm(), key, iv))
+        handleErrors();
+    if(!EVP_DecryptUpdate(ctx, NULL, &len, aad, DIM_AAD))
+        handleErrors();
+    if(!EVP_DecryptUpdate(ctx, buffer, &len, ciphertext, ciphertext_len))
+        handleErrors();
+    *plaintext_len = len;
+    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, 16, tag))
+        handleErrors();
+    ret = EVP_DecryptFinal(ctx, buffer + len, &len);
+
+    /* Clean up */
+    EVP_CIPHER_CTX_cleanup(ctx);
+
+    if(ret < 0)
+		return NULL;
+	*plaintext_len += len;
+	memcpy(plaintext, buffer, *plaintext_len);
+	return plaintext;
 }

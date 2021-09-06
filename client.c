@@ -125,7 +125,7 @@ int main(int argc, const char** argv){
 	}
 	fclose(file);
 	
-	printf("Prvkey loaded\n");
+	printf("Pubkey loaded\n");
 
 	//CERTIFICATE STORE CREATION
 	strcpy(fileName, "certificates/CA_cert.pem");
@@ -176,7 +176,8 @@ int main(int argc, const char** argv){
 		perror("Error during the extraction of the certificate of the server\n");
 		exit(-1);
 	}
-	serverCertificate = d2i_X509(NULL, (const unsigned char**)&opBuffer, dimOpBuffer);
+	const unsigned char* p = opBuffer;
+	serverCertificate = d2i_X509(NULL, &p, dimOpBuffer);
 	//serverCertificate = d2i_X509(NULL, (const unsigned char**)&message_recv, recv_len);
 	printf("Certificate deserialized\n");
 	if(serverCertificate == NULL){
@@ -186,6 +187,7 @@ int main(int argc, const char** argv){
 
 	//now that I have the certificate, its serialization is useless
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
+	free(opBuffer);
 	dimOpBuffer = 0;
 	//certificate verification
 	
@@ -200,7 +202,6 @@ int main(int argc, const char** argv){
 	}
 	//now that I have the public key of the server, the certificate is useless
 	X509_free(serverCertificate);
-	//OPENSSL_free(opBuffer);
 	free(message_recv);
 	recv_len = 0;
 	printf("Creation of the response for the server\n");
@@ -227,7 +228,7 @@ int main(int argc, const char** argv){
 	send_len = 0;
 	printf("Message sent to the server \n");
 
-	/*//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
+	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	
 	dhPrivateKey = generateDHParams();
 	
@@ -343,6 +344,14 @@ int main(int argc, const char** argv){
 					recv_len = 0;
 					break;
 				case 2:		//request to talk
+					printf("who do you want to send the request to?\n");
+					opBuffer = (unsigned char*) malloc(DIM_USERNAME);
+					fgets(opBuffer, DIM_USERNAME, stdin);
+					charPointer = strchr(opBuffer, '\n');
+					if(charPointer)
+						*charPointer = '\0';
+					concat2Elements(plaintext, opBuffer, "request", DIM_USERNAME, strlen("request") + 1);
+
 					break;
 				case 3:		//logout
 					printf("Logging out\n");
@@ -364,7 +373,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
-	*/
+	
 	printf("Authentication succeded\n");
 	close(sock);
 	return 0;
