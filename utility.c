@@ -63,7 +63,6 @@ void send_obj (int sock, unsigned char* buf, size_t len){
 //return a portion of the src array
 //l'array ritornato è una porzione di src che va da src[start] a src[end - 1]
 void extract_data_from_array(unsigned char* dest, unsigned char* src, int start, int end){
-	printf("I went here\n");
 	int i,j;
 	if(start < 0 || end < 0 || start > end || src == NULL || dest == NULL){
 		perror("wrong parameters");
@@ -95,20 +94,31 @@ void sumControl(int a, int b){
 }
 
 void subControlInt(int a, int b){
-	if(a <0 || b>0){
+	if(a <0 || b<0){
 		perror("integer overflow");
 		exit(-1);
 	}
 
-	if (a > b){
+	if (b>a){
 		perror("integer overflow");
 		exit(-1);
 	}
 	
 }
 
+bool comparisonUnsignedChar (unsigned char* src1, unsigned char* src2, int len){
+	for (int i = 0; i<len; i++){
+		if(src1[i] != src2[i]) return false;
+	}
+	return true;
+}
+
 //concate two sources in one other array
 void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* src2, int len1, int len2){
+	if(!src1 || !src2){
+		printf("Invalid input\n");
+		exit(-1);
+	}
 	sumControl(len1, len2);
 	memset(dest, 0, len1 + len2);
 	memcpy(dest, src1, len1);
@@ -143,7 +153,7 @@ void getPassword(unsigned char* password){
 
 	/* Restore terminal. */
 	if(tcsetattr (fileno (stdin), TCSAFLUSH, &old)){
-		perror("Error while getting the password");
+		perror("Error while restoring the terminal");
 		exit(-1);
 	}
 	printf("\n");

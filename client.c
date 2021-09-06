@@ -13,6 +13,11 @@
 #include <unistd.h>
 #include "crypto.c"
 
+#define DIM_SUFFIX_FILE_PUBKEY 12
+#define DIM_SUFFIX_FILE_PRIVKEY 13
+#define DIM_PASSWORD 32
+#define DIR_SIZE 6
+
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
 const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
@@ -92,9 +97,12 @@ int main(int argc, const char** argv){
 	
 	
 	//LOADING PRIVATE KEY
-	strcpy(fileName, "keys/");
-	strcat(fileName, username);
-	strcat(fileName, "_privkey.pem");
+	int lim = DIR_SIZE;//-1;
+	strncpy(fileName, "keys/", lim );
+	lim = DIM_USERNAME;//-1;
+	strncat(fileName, username, lim );
+	lim = DIM_SUFFIX_FILE_PRIVKEY;//-1;
+	strncat(fileName, "_privkey.pem", lim);
 	file = fopen(fileName, "r");
 	if(file == NULL){
 		perror("Error during the opening of a file\n");
@@ -109,7 +117,7 @@ int main(int argc, const char** argv){
 	
 	printf("Prvkey loaded\n");
 
-	//LOADING PUBLIC KEY
+	/*//LOADING PUBLIC KEY
 	strcpy(fileName, "keys/");
 	strcat(fileName, username);
 	strcat(fileName, "_pubkey.pem");
@@ -125,7 +133,7 @@ int main(int argc, const char** argv){
 	}
 	fclose(file);
 	
-	printf("Prvkey loaded\n");
+	printf("Pubkey loaded\n");*/
 
 	//CERTIFICATE STORE CREATION
 	strcpy(fileName, "certificates/CA_cert.pem");
@@ -156,13 +164,17 @@ int main(int argc, const char** argv){
 	//AUTHENTICATION WITH THE SERVER
 	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
+	if(!recv_len){
+		perror("Error during the adding of a certificate\n");
+		exit(-1);
+	}
 	receive_obj(sock, message_recv, recv_len);
-	printf("Message from server received\n");
 	extract_data_from_array(serverNonce, message_recv, 0, DIM_NONCE);
 	if(serverNonce == NULL){
 		perror("Error during the extraction of the nonce of the server\n");
 		exit(-1);
 	}
+	
 	printf("Got server nonce\n");
 	dimOpBuffer = recv_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc((dimOpBuffer));
@@ -177,7 +189,7 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	serverCertificate = d2i_X509(NULL, (const unsigned char**)&opBuffer, dimOpBuffer);
-	//serverCertificate = d2i_X509(NULL, (const unsigned char**)&message_recv, recv_len);
+	
 	printf("Certificate deserialized\n");
 	if(serverCertificate == NULL){
 		perror("Error during deserialization of the certificate of the server\n");
@@ -187,8 +199,8 @@ int main(int argc, const char** argv){
 	//now that I have the certificate, its serialization is useless
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
 	dimOpBuffer = 0;
-	//certificate verification
 	
+	//CERTIFICATE VERIFICATION
 	if(!verifyCertificate(certStore, serverCertificate)){
 		perror("Error during verification of the server certificate\n");
 		exit(-1);
@@ -205,28 +217,64 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 	printf("Creation of the response for the server\n");
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
-	dimOpBuffer = DIM_NONCE; 
+	/*dimOpBuffer = DIM_NONCE; 
 	unsigned char* opBuffer2 = (unsigned char*) malloc(dimOpBuffer);
+	if(!opBuffer2){
+		perror("malloc");
+		exit(-1);
+	}
 	memset(opBuffer2, 0, dimOpBuffer);
-	memcpy(opBuffer2, serverNonce, dimOpBuffer);
+	memcpy(opBuffer2, serverNonce, dimOpBuffer);*/
 	//concat2Elements(opBuffer2, serverNonce, username, DIM_NONCE, DIM_USERNAME);
 	signature = (unsigned char*)malloc(EVP_PKEY_size(myPrivK));
-	signatureFunction(opBuffer2, dimOpBuffer, signature, &signatureLen, myPrivK);
+	if(!signature){
+		perror("malloc");
+		exit(-1);
+	}
+	signatureFunction(serverNonce, DIM_NONCE, signature, &signatureLen, myPrivK);
 	sumControl(dimOpBuffer, signatureLen);
-	unsigned char* buf = (unsigned char*) malloc(dimOpBuffer+signatureLen);
-	//concat2Elements(buf, opBuffer2, signature, dimOpBuffer, signatureLen);
+	unsigned char* buf = (unsigned char*) malloc(DIM_NONCE+signatureLen);
+	if(!buf){
+		perror("malloc");
+		exit(-1);
+	}
+	concat2Elements(buf, serverNonce, signature, DIM_NONCE, signatureLen);
 	//sumControl(DIM_USERNAME, dimOpBuffer);
-	sumControl(DIM_USERNAME, signatureLen);
-	send_len = DIM_USERNAME +  signatureLen;
+	sumControl(DIM_USERNAME, signatureLen + dimOpBuffer);
+	send_len = DIM_USERNAME +  signatureLen + dimOpBuffer;
 	message_send = (unsigned char*) malloc(send_len);
-	concat2Elements(message_send, username, signature, DIM_USERNAME, signatureLen);
+	if(!message_send){
+		perror("malloc");
+		exit(-1);
+	}
+	concat2Elements(message_send, username, buf, DIM_USERNAME, signatureLen+DIM_NONCE);
 	
 
 	send_obj(sock, message_send, send_len);
 	free(message_send);
+	free(buf);
+	free(signature);
 	send_len = 0;
 	printf("Message sent to the server \n");
 
+	
+	
+	int len_status = receive_len(sock);
+	unsigned char* status = (unsigned char*) malloc(len_status);
+	if(!status){
+		perror("malloc");
+		exit(-1);
+	}
+	receive_obj(sock, status, len_status);
+	printf("%s\n", status);
+	if (strcmp(status, "OK")==0){
+		printf("Authentication succeded\n");
+	}
+	else {
+		printf("Authentication failed\n");
+		exit(-1);
+	}
+	free(status);
 	/*//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	
 	dhPrivateKey = generateDHParams();
@@ -365,7 +413,7 @@ int main(int argc, const char** argv){
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
 	*/
-	printf("Authentication succeded\n");
+	
 	close(sock);
 	return 0;
 }

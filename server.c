@@ -155,6 +155,7 @@ void handle_auth(int sock, bool* users_online){
 	//char myNonce[DIM_NONCE];
 	printf("In handle_auth\n");
 	generateNonce(myNonce);
+	//printf("My nonce=%s\n", myNonce); 
 	
 	X509* cert = getServerCertificate();
 
@@ -168,80 +169,90 @@ void handle_auth(int sock, bool* users_online){
 		exit(-1);
 	}
 
-	//Generate msg
-	if (DIM_NONCE == INT_MAX){
-		perror("increment overflow");
-		exit(-1);
-	}
-	sumControl (cert_size, DIM_NONCE + 1);
+	sumControl (cert_size, DIM_NONCE);
 	
-	size_t size_msg = cert_size + DIM_NONCE + 1;
+	size_t size_msg = cert_size + DIM_NONCE;
 	unsigned char msg[size_msg];
+	memset(msg, 0, size_msg);
 	concat2Elements(msg, myNonce, cert_buf, DIM_NONCE, cert_size);
 	
+	
 	OPENSSL_free(cert_buf);
-	//send_obj(sock, cert_buf, cert_size);
 	send_obj(sock, msg, size_msg);
 	printf("Certificate and nonce sended to the client \n");
 	
 	//Receive signed nonce from client
 	int signed_size = receive_len(sock);
-	sumControl(signed_size, 1);
 	unsigned char signed_msg[signed_size];
 	receive_obj(sock, signed_msg, signed_size); 
 	printf("Get signed nonce by username\n");
 	
 	//Get the nonce and the username from the message I have received
 	unsigned char get_username[DIM_USERNAME];
+	//Get username
 	extract_data_from_array(get_username, signed_msg, 0, DIM_USERNAME);
-	sumControl (signed_size, DIM_USERNAME);
-	printf("%s\n", (char*)get_username);
-	int signed_nonce_size = signed_size - DIM_USERNAME;
-	unsigned char signed_nonce[signed_nonce_size];
-	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME, signed_size);
+	sumControl(DIM_USERNAME, DIM_NONCE);
+	int nonce_part = DIM_NONCE + DIM_USERNAME;
+	unsigned char signed_nonce[DIM_NONCE];
+	//Get nonce
+	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME, nonce_part);
+	subControlInt(signed_size, nonce_part);
+	int signature_len = signed_size - nonce_part;
+	unsigned char* signature = (unsigned char*) malloc(signature_len);
+	if(!signature){
+		perror("malloc");
+		exit(-1);
+	}
+	//Get digital signature
+	extract_data_from_array(signature, signed_msg, nonce_part, signed_size);
 	
 	//Get the public key from pem file
 	EVP_PKEY* pubkey;
 	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
-	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY-DIR_SIZE));
+	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY+DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
-	unsigned char namefile[name_size];
-	/*unsigned char* buf = (unsigned char*) malloc(DIR_SIZE + DIM_USERNAME);
-	concat2Elements(buf, (unsigned char*)DIR, (unsigned char*)get_username, DIR_SIZE, DIM_USERNAME);*/
-	int lim = DIR_SIZE -1;
-	strncpy ((char*)namefile, (char*)DIR, lim);
-	lim= DIM_USERNAME -1;
-	strncat ((char*)namefile, (char*)get_username, lim);
-	lim= DIM_SUFFIX_FILE_PUBKEY-1;
-	strncat ((char*)namefile, (char*)"_pubkey.pem", lim);
-	/*concat2Elements(namefile, buf, (unsigned char*)"_pubkey.pem", DIR_SIZE + DIM_USERNAME, DIM_SUFFIX_FILE_PUBKEY);
-	free(buf);*/
-	printf("%s\n", namefile);
-	FILE* file = fopen((char*)namefile, "r");
+	char fileName[name_size];
+	int lim = DIR_SIZE; 
+	//Get file name
+	strncpy(fileName, (char*)DIR, lim );
+	lim = DIM_USERNAME; 
+	strncat(fileName, (char*)get_username, lim );
+	lim = DIM_SUFFIX_FILE_PUBKEY;
+	strncat(fileName, "_pubkey.pem", lim);
+	//printf("%s\n", fileName);
+	FILE* file = fopen(fileName, "r");
 	if(!file){
-		perror("Specified file doesn't exists");
+		perror("fopen");
 		exit(-1);
 	}
 	
+	//Retrive client's public key
 	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
 	if (!pubkey){
 		perror("Pubkey not found");
 		exit(-1);
 	}
 	fclose(file);
-	printf("FClose\n");
+
 	//Signature verification
-	bool ret =verifySignature(signed_msg, myNonce, signed_nonce_size, DIM_NONCE, pubkey);
-	printf("Where am i?!\n");
-	if (ret){
+	bool ret =verifySignature(signature, myNonce, signature_len, DIM_NONCE, pubkey);
+	//Comparison between myNonce and the nonce the client has sent me back
+	bool ret2 = comparisonUnsignedChar(myNonce, signed_nonce, DIM_NONCE);
+	if (ret && ret2){
 		printf("%s authentication succeded!", get_username);
+		//I notify the result of the authentication to the user
+		send_obj(sock, "OK", 3);
 
 	}
 	else {
-		perror("signature verify failure");
+		printf("Authentication of %s failed\n", get_username);
+		//I notify the result of the authentication to the user
+		send_obj(sock, "NO", 3);
 		exit(-1);
+		
 	}
 	EVP_PKEY_free(pubkey);
+	free(signature);
 	
 	//Update online users' list
 	//addUsertoList(get_username, users_online );
