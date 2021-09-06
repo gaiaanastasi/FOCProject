@@ -59,12 +59,27 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
 
 //function wthat verifies the signature
 bool verifySignature (unsigned char* signed_msg,  unsigned char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
-	
+	printf("verifySignature!\n");
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-	EVP_VerifyInit(ctx, EVP_sha256());
-	EVP_VerifyUpdate (ctx, unsigned_msg, unsigned_size);
-	int ret = EVP_VerifyFinal(ctx, (unsigned char*)signed_msg, signed_size, pubkey);
+	if(!ctx){
+		perror("ctx was not allocated");
+		exit(-1);
+	}
+	int ret = EVP_VerifyInit(ctx, EVP_sha256());
 	if (ret !=1 ){
+		perror("verifyInit");
+		exit(-1);
+	}
+	printf("Init\n");
+	ret=EVP_VerifyUpdate (ctx, unsigned_msg, unsigned_size);
+	if (ret !=1 ){
+		perror("verifyUpdate");
+		exit(-1);
+	}
+	printf("Update!\n");
+	ret = EVP_VerifyFinal(ctx, (unsigned char*)signed_msg, signed_size, pubkey);
+	if (ret !=1 ){
+		printf("%d\n", ret);
 		perror("authentication error");
 		exit(-1);
 	}

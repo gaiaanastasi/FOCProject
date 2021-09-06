@@ -53,18 +53,7 @@ int main(int argc, const char** argv){
 	FILE* file = NULL;			//generic file pointer used in different parts of the code
 	fd_set readFdSet;			//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
-	//socket creation and instantiation
-	sock = socket(AF_INET, SOCK_STREAM, 0);
-	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia
-	srv_addr.sin_family = AF_INET;
-	srv_addr.sin_port = htons(port_address);
-	inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
-    ret = connect(sock, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
-	if(ret < 0){
-		perror("An error occured during the connection phase \n");
-		exit(-1);
-	}
-
+	
 	//log in of the user
 	memset(username, 0, DIM_USERNAME);
 	printf("Insert your username:\t");
@@ -86,6 +75,20 @@ int main(int argc, const char** argv){
 		*charPointer = '\0';*/
 	
 	printf("\nRequest sended\n");
+	
+	
+	//socket creation and instantiation
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	memset(&srv_addr, 0, sizeof(srv_addr)); // Pulizia
+	srv_addr.sin_family = AF_INET;
+	srv_addr.sin_port = htons(port_address);
+	inet_pton(AF_INET, ip_address, &srv_addr.sin_addr);
+    ret = connect(sock, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
+	if(ret < 0){
+		perror("An error occured during the connection phase \n");
+		exit(-1);
+	}
+
 	
 	
 	//LOADING PRIVATE KEY
@@ -163,7 +166,10 @@ int main(int argc, const char** argv){
 	printf("Got server nonce\n");
 	dimOpBuffer = recv_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc((dimOpBuffer));
-	//extract_data_from_array(opBuffer, message_recv, 0, recv_len);
+	if(!opBuffer){
+		perror("malloc");
+		exit(-1);
+	}
 	extract_data_from_array(opBuffer, message_recv, DIM_NONCE, recv_len);	//opBuffer will contain the serialized certificate of the server
 	printf("Got server certificate\n");
 	if(opBuffer == NULL){
@@ -179,46 +185,49 @@ int main(int argc, const char** argv){
 	}
 
 	//now that I have the certificate, its serialization is useless
-	printf("Hi\n");
-	OPENSSL_free(opBuffer);
-	//free(message_recv);
-	printf("not here\n");
+	//OPENSSL_free(opBuffer); //DA RIVEDERE
 	dimOpBuffer = 0;
-	printf("free\n");
 	//certificate verification
-	/*if(!verifyCertificate(certStore, serverCertificate)){
+	
+	if(!verifyCertificate(certStore, serverCertificate)){
 		perror("Error during verification of the server certificate\n");
 		exit(-1);
 	}
-	printf("verifyCertificate\n");
 	serverPubK = X509_get_pubkey(serverCertificate);
 	if(serverPubK == NULL){
 		perror("Error during the extraction of the public key of the server from its certificate\n");
 		exit(-1);
 	}
-	printf("almost there\n");
 	//now that I have the public key of the server, the certificate is useless
 	X509_free(serverCertificate);
+	//OPENSSL_free(opBuffer);
 	free(message_recv);
 	recv_len = 0;
-
+	printf("Creation of the response for the server\n");
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
-	sumControl(DIM_NONCE, DIM_USERNAME);
-	dimOpBuffer = DIM_NONCE + DIM_USERNAME;
-	opBuffer = (unsigned char*) malloc(dimOpBuffer);
-	concat2Elements(opBuffer, serverNonce, username, DIM_NONCE, DIM_USERNAME);
+	dimOpBuffer = DIM_NONCE; 
+	unsigned char* opBuffer2 = (unsigned char*) malloc(dimOpBuffer);
+	memset(opBuffer2, 0, dimOpBuffer);
+	memcpy(opBuffer2, serverNonce, dimOpBuffer);
+	//concat2Elements(opBuffer2, serverNonce, username, DIM_NONCE, DIM_USERNAME);
 	signature = (unsigned char*)malloc(EVP_PKEY_size(myPrivK));
-	signatureFunction(opBuffer, dimOpBuffer, signature, &signatureLen, myPrivK);
-	send_len = dimOpBuffer + signatureLen;
+	signatureFunction(opBuffer2, dimOpBuffer, signature, &signatureLen, myPrivK);
+	sumControl(dimOpBuffer, signatureLen);
+	unsigned char* buf = (unsigned char*) malloc(dimOpBuffer+signatureLen);
+	//concat2Elements(buf, opBuffer2, signature, dimOpBuffer, signatureLen);
+	//sumControl(DIM_USERNAME, dimOpBuffer);
+	sumControl(DIM_USERNAME, signatureLen);
+	send_len = DIM_USERNAME +  signatureLen;
 	message_send = (unsigned char*) malloc(send_len);
-	concat2Elements(message_send, opBuffer, signature, dimOpBuffer, signatureLen);
+	concat2Elements(message_send, username, signature, DIM_USERNAME, signatureLen);
+	
 
 	send_obj(sock, message_send, send_len);
 	free(message_send);
 	send_len = 0;
 	printf("Message sent to the server \n");
 
-	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
+	/*//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	
 	dhPrivateKey = generateDHParams();
 	

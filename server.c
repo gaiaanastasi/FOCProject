@@ -22,7 +22,7 @@
 #define DIM_SUFFIX_FILE_PRIVKEY 13
 #define DIM_PASSWORD 32
 #define DIR_SIZE 6
-#define DIR "/keys/"
+#define DIR "keys/"
 #define DIM_NONCE 16
 #define DIM_USERNAME 32
 
@@ -184,21 +184,21 @@ void handle_auth(int sock, bool* users_online){
 	send_obj(sock, msg, size_msg);
 	printf("Certificate and nonce sended to the client \n");
 	
-	/*//Receive signed nonce from client
+	//Receive signed nonce from client
 	int signed_size = receive_len(sock);
 	sumControl(signed_size, 1);
 	unsigned char signed_msg[signed_size];
 	receive_obj(sock, signed_msg, signed_size); 
 	printf("Get signed nonce by username\n");
-	/*
+	
 	//Get the nonce and the username from the message I have received
 	unsigned char get_username[DIM_USERNAME];
-	extract_data_from_array(signed_msg, get_username, 0, DIM_USERNAME);
+	extract_data_from_array(get_username, signed_msg, 0, DIM_USERNAME);
 	sumControl (signed_size, DIM_USERNAME);
-	
+	printf("%s\n", (char*)get_username);
 	int signed_nonce_size = signed_size - DIM_USERNAME;
 	unsigned char signed_nonce[signed_nonce_size];
-	extract_data_from_array(signed_msg, signed_nonce, DIM_USERNAME, signed_size);
+	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME, signed_size);
 	
 	//Get the public key from pem file
 	EVP_PKEY* pubkey;
@@ -206,26 +206,33 @@ void handle_auth(int sock, bool* users_online){
 	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY-DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
 	unsigned char namefile[name_size];
+	/*unsigned char* buf = (unsigned char*) malloc(DIR_SIZE + DIM_USERNAME);
+	concat2Elements(buf, (unsigned char*)DIR, (unsigned char*)get_username, DIR_SIZE, DIM_USERNAME);*/
 	int lim = DIR_SIZE -1;
-	strncat ((char*)namefile, (char*)DIR, lim);
+	strncpy ((char*)namefile, (char*)DIR, lim);
 	lim= DIM_USERNAME -1;
 	strncat ((char*)namefile, (char*)get_username, lim);
 	lim= DIM_SUFFIX_FILE_PUBKEY-1;
-	strncat ((char*)namefile, (char*)"pubkey.pem", lim);
+	strncat ((char*)namefile, (char*)"_pubkey.pem", lim);
+	/*concat2Elements(namefile, buf, (unsigned char*)"_pubkey.pem", DIR_SIZE + DIM_USERNAME, DIM_SUFFIX_FILE_PUBKEY);
+	free(buf);*/
+	printf("%s\n", namefile);
 	FILE* file = fopen((char*)namefile, "r");
 	if(!file){
 		perror("Specified file doesn't exists");
 		exit(-1);
 	}
+	
 	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
 	if (!pubkey){
 		perror("Pubkey not found");
 		exit(-1);
 	}
 	fclose(file);
-	
+	printf("FClose\n");
 	//Signature verification
 	bool ret =verifySignature(signed_msg, myNonce, signed_nonce_size, DIM_NONCE, pubkey);
+	printf("Where am i?!\n");
 	if (ret){
 		printf("%s authentication succeded!", get_username);
 
@@ -237,9 +244,9 @@ void handle_auth(int sock, bool* users_online){
 	EVP_PKEY_free(pubkey);
 	
 	//Update online users' list
-	addUsertoList(get_username, users_online );
+	//addUsertoList(get_username, users_online );
 	
-	*/	
+		
 
 }
 
