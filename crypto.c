@@ -35,12 +35,18 @@ void generateNonce(unsigned char* nonce){
 
 //function that return the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
-    EVP_MD_CTX* signCtx = NULL;		//signature context
-    int ret = 0;
-    signCtx = EVP_MD_CTX_new();
+	printf("Here in signatureFunction\n");
+	EVP_MD_CTX* signCtx = NULL;		//signature context
+	int ret = 0;
+	signCtx = EVP_MD_CTX_new();
+	if(!signCtx){
+		perror("Error during context allocation\n");
+		exit(-1);
+	}
 	ret = EVP_SignInit(signCtx, EVP_sha256());
 	if(ret == 0){
 		perror("Error during signInit()\n");
+		exit(-1);
 	}
 	//the plaintext is not big, so we can have only one update
 	ret = EVP_SignUpdate(signCtx, plaintext, dimpt);
@@ -58,8 +64,8 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
 }
 
 //function wthat verifies the signature
-bool verifySignature (unsigned char* signed_msg,  unsigned char* unsigned_msg, int signed_size, int unsigned_size, EVP_PKEY* pubkey){
-	printf("verifySignature!\n");
+bool verifySignature (unsigned char* signature,  unsigned char* unsigned_msg, int signature_size, int unsigned_size, EVP_PKEY* pubkey){
+	printf("Verifying signature\n");
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	if(!ctx){
 		perror("ctx was not allocated");
@@ -70,18 +76,15 @@ bool verifySignature (unsigned char* signed_msg,  unsigned char* unsigned_msg, i
 		perror("verifyInit");
 		exit(-1);
 	}
-	printf("Init\n");
 	ret=EVP_VerifyUpdate (ctx, unsigned_msg, unsigned_size);
 	if (ret !=1 ){
 		perror("verifyUpdate");
 		exit(-1);
 	}
-	printf("Update!\n");
-	ret = EVP_VerifyFinal(ctx, (unsigned char*)signed_msg, signed_size, pubkey);
+	ret = EVP_VerifyFinal(ctx, signature, signature_size, pubkey);
 	if (ret !=1 ){
-		printf("%d\n", ret);
 		perror("authentication error");
-		exit(-1);
+		return false;
 	}
 	EVP_MD_CTX_free(ctx);
 	return true;
