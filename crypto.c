@@ -590,7 +590,7 @@ bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, in
 }
 */
 
-//function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }
+//function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }. It returns NULL in case of error
 unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen)
 {
     EVP_CIPHER_CTX *ctx;
@@ -636,7 +636,7 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	return outBuffer;
 }
 
-//function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext
+//function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext. It returns NULL in case of error
 unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, int *plaintext_len, unsigned char* key)
 {
     EVP_CIPHER_CTX *ctx;
