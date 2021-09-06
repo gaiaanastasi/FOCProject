@@ -176,8 +176,8 @@ EVP_PKEY* generateDHParams(){
 	return dhPrivateKey;
 }
 
-//Function that allocates and returns the serialization of a DH public key
-unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
+//Function that allocates and returns the serialization of a public key. It returns NULL in case of error
+unsigned char* serializePublicKey(EVP_PKEY* privK, int* bufferLen){
 	BIO* myBio;
 	int ret;
 	unsigned char* buffer;
@@ -197,8 +197,8 @@ unsigned char* serializeDHpublicKey(EVP_PKEY* privK, int* bufferLen){
 	return buffer;
 }
 
-//Function that allocates and returns the deserialized DH public key
-EVP_PKEY* deserializeDHpublicKey(unsigned char* buffer, int bufferLen){
+//Function that allocates and returns the deserialized public key. It returns NULL in case of error
+EVP_PKEY* deserializePublicKey(unsigned char* buffer, int bufferLen){
 	EVP_PKEY* pubKey;
 	int ret;
 	BIO* myBio;
@@ -598,6 +598,7 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	int ret = 0;
     int ciphertext_len = 0;
 	unsigned char* outBuffer;
+	unsigned char* tag = (unsigned char*) malloc(DIM_TAG);
 	unsigned char* ciphertext = (unsigned char*) malloc(plaintext_len + DIM_TAG);
 	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
 	ret = RAND_bytes(&iv[0], DIM_IV);
@@ -630,6 +631,8 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	concat2Elements(outBuffer, AAD, DIM_IV, DIM_AAD);
 	concat2Elements(outBuffer, tag, DIM_AAD + DIM_IV, DIM_TAG);
 	concat2Elements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
+	free(ciphertext);
+	free(iv);
 	return outBuffer;
 }
 
@@ -647,33 +650,39 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 	unsigned char* plaintext;
 	unsigned char* buffer = (unsigned char*) malloc(ciphertext_len);
 	//extract informations
+	ciphertext = (unsigned char*) malloc(ciphertext_len);
 	iv = (unsigned char*) malloc(DIM_IV);
 	aad = (unsigned char*) malloc(DIM_AAD);
 	tag = (unsigned char*) malloc(DIM_TAG);
 	extract_data_from_array(iv, recv_buffer, 0, DIM_IV);
-	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_AAD);
-	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_TAG);
-	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, ciphertext_len);
+	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_IV + DIM_AAD);
+	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_IV + DIM_AAD + DIM_TAG);
+	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, bufferLen);
 
     if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors();
+        return NULL;
     if(!EVP_DecryptInit(ctx, EVP_aes_128_gcm(), key, iv))
-        handleErrors();
+        return NULL;
     if(!EVP_DecryptUpdate(ctx, NULL, &len, aad, DIM_AAD))
-        handleErrors();
+        return NULL;
     if(!EVP_DecryptUpdate(ctx, buffer, &len, ciphertext, ciphertext_len))
-        handleErrors();
+        return NULL;
     *plaintext_len = len;
     if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, 16, tag))
-        handleErrors();
+        return NULL;
     ret = EVP_DecryptFinal(ctx, buffer + len, &len);
 
-    /* Clean up */
-    EVP_CIPHER_CTX_cleanup(ctx);
+	EVP_CIPHER_CTX_free(ctx);
 
     if(ret < 0)
 		return NULL;
 	*plaintext_len += len;
+	plaintext = (unsigned char*) malloc(*plaintext_len);
 	memcpy(plaintext, buffer, *plaintext_len);
+	free(tag);
+	free(iv);
+	free(aad);
+	free(buffer);
+	free(ciphertext);
 	return plaintext;
 }
