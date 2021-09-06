@@ -126,7 +126,7 @@ void concat2Elements(unsigned char* dest, unsigned char* src1, unsigned char* sr
 }
 
 //concat src at the end of dest
-void concat2Elements(unsigned char* dest, unsigned char* src, int destLen, int srcLen){
+void concatElements(unsigned char* dest, unsigned char* src, int destLen, int srcLen){
 	sumControl(destLen, srcLen);
 	memcpy(dest + destLen, src, srcLen);
 }

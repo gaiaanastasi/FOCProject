@@ -206,7 +206,7 @@ int main(int argc, const char** argv){
 	}
 	fclose(file);
 	
-	printf("Prvkey loaded\n");
+	
 
 	/*//LOADING PUBLIC KEY
 	strcpy(fileName, "keys/");
@@ -224,7 +224,7 @@ int main(int argc, const char** argv){
 	}
 	fclose(file);
 	
-	printf("Pubkey loaded\n");*/
+	*/
 
 	//CERTIFICATE STORE CREATION
 	strcpy(fileName, "certificates/CA_cert.pem");
@@ -250,7 +250,6 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	
-	printf("Store certificate created\n");
 
 	//AUTHENTICATION WITH THE SERVER
 	//RECEIVING THE NONCE AND THE CERTIFICATE
@@ -267,7 +266,6 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	
-	printf("Got server nonce\n");
 	dimOpBuffer = recv_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc((dimOpBuffer));
 	if(!opBuffer){
@@ -275,14 +273,12 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	extract_data_from_array(opBuffer, message_recv, DIM_NONCE, recv_len);	//opBuffer will contain the serialized certificate of the server
-	printf("Got server certificate\n");
 	if(opBuffer == NULL){
 		perror("Error during the extraction of the certificate of the server\n");
 		exit(-1);
 	}
 	serverCertificate = d2i_X509(NULL, (const unsigned char**)&opBuffer, dimOpBuffer);
 	
-	printf("Certificate deserialized\n");
 	if(serverCertificate == NULL){
 		perror("Error during deserialization of the certificate of the server\n");
 		exit(-1);
@@ -290,7 +286,7 @@ int main(int argc, const char** argv){
 
 	//now that I have the certificate, its serialization is useless
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
-	free(opBuffer);
+	//free(opBuffer);
 	dimOpBuffer = 0;
 	
 	//CERTIFICATE VERIFICATION
@@ -307,7 +303,6 @@ int main(int argc, const char** argv){
 	X509_free(serverCertificate);
 	free(message_recv);
 	recv_len = 0;
-	printf("Creation of the response for the server\n");
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
 	/*dimOpBuffer = DIM_NONCE; 
@@ -333,8 +328,8 @@ int main(int argc, const char** argv){
 	}
 	concat2Elements(buf, serverNonce, signature, DIM_NONCE, signatureLen);
 	//sumControl(DIM_USERNAME, dimOpBuffer);
-	sumControl(DIM_USERNAME, signatureLen + dimOpBuffer);
-	send_len = DIM_USERNAME +  signatureLen + dimOpBuffer;
+	sumControl(DIM_USERNAME, signatureLen+DIM_NONCE);
+	send_len = DIM_USERNAME +  signatureLen + DIM_NONCE;
 	message_send = (unsigned char*) malloc(send_len);
 	if(!message_send){
 		perror("malloc");
@@ -348,9 +343,7 @@ int main(int argc, const char** argv){
 	free(buf);
 	free(signature);
 	send_len = 0;
-	free(signature);
 	signatureLen = 0;
-	printf("Message sent to the server \n");
 
 	
 	
@@ -361,7 +354,6 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	receive_obj(sock, status, len_status);
-	printf("%s\n", status);
 	if (strcmp(status, "OK")==0){
 		printf("Authentication succeded\n");
 	}
@@ -542,11 +534,11 @@ int main(int argc, const char** argv){
 			//the message is encrypted by means of the symmetric key used by server and client
 			
 		}
-	}
+	}*/
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);
-	*/
+	
 	
 	close(sock);
 	return 0;

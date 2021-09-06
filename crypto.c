@@ -35,7 +35,6 @@ void generateNonce(unsigned char* nonce){
 
 //function that return the signature for a given plaintext and in signatureLen its length
 void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatureLen, EVP_PKEY* myPrivK){
-	printf("Here in signatureFunction\n");
 	EVP_MD_CTX* signCtx = NULL;		//signature context
 	int ret = 0;
 	signCtx = EVP_MD_CTX_new();
@@ -431,168 +430,6 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 
 }
 
-/*
-//function for symmetric encryption
-bool symmetricEncryption(unsigned char* pt, int pt_len,  unsigned char* cpt, int* cpt_len, unsigned char* sessionkey){
-	
-	int ret = 0;
-	int read = 0;
-	int howmany =0;
-	int dim =0;
-	unsigned char tag[DIM_TAG];
-	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
-	ret = RAND_bytes(&iv[0], DIM_IV);
-	if (ret!=1)
-		return false;
-		
-	if(pt_len < 0) return false;
-	sumControl(sizeof(pt), sizeof(AAD));
-	dim = sizeof(pt) + sizeof(AAD);
-	sumControl(dim, sizeof(iv)); 
-	dim += sizeof(iv);
-	sumControl (dim, DIM_BLOCK);
-	dim +=DIM_BLOCK; //padding
-	cpt = (unsigned char*) malloc(dim);
-	cpt_len = (int*) malloc (sizeof(int));
-	*cpt_len = 0;
-	
-	
-	
-	EVP_CIPHER_CTX* ctx;
-	ctx = EVP_CIPHER_CTX_new();
-	if(!ctx)
-		return false;
-	ret = EVP_EncryptInit(ctx, EVP_aes_128_gcm(), sessionkey, iv);
-	if (ret != 1)
-		return false;
-	ret = EVP_EncryptUpdate(ctx, NULL, &howmany, (unsigned char*)AAD, strlen(AAD));
-	subControlInt (pt_len, DIM_BLOCK);
-	while (read < pt_len - DIM_BLOCK){
-		ret= EVP_EncryptUpdate(ctx, cpt + read, &howmany, pt + read, DIM_BLOCK);
-		if (ret != 1)
-			return false;
-		sumControl(read, DIM_BLOCK);
-		sumControl (*cpt_len, howmany);
-		read +=DIM_BLOCK;
-		*cpt_len += howmany;
-	}
-	ret= EVP_EncryptUpdate(ctx, cpt + read, &howmany, pt + read, pt_len - read);
-	if (ret != 1)
-		return false;
-	ret=EVP_EncryptFinal (ctx, (unsigned char*)cpt+howmany, &howmany);
-	if (ret != 1)
-		return false;
-	sumControl(*cpt_len, howmany);
-	*cpt_len += howmany;
-	ret = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, DIM_TAG, tag);
-	if(ret !=1)
-		return false;
-	
-	EVP_CIPHER_CTX_free(ctx);
-	#pragma optimize("", off)
-   	memset(iv, 0, DIM_IV);
-	#pragma optimize("", on)
-   	free(iv);
-   	return true;
-	
-}
-
-
-bool symmetricDecryption(unsigned char* pt, int* pt_len,  unsigned char* cpt, int cpt_len, unsigned char* sessionkey){
-	
-	int ret = 0;
-	int read = 0;
-	int howmany =0;
-	int dim =0;
-	unsigned char tag[DIM_TAG];
-	if(pt_len < 0) return false;
-	pt_len = (int*) malloc (sizeof(int));
-	*pt_len = 0;
-
-	
-	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
-	if (!iv)
-		return false;
-	
-	EVP_CIPHER_CTX* ctx;
-	ctx = EVP_CIPHER_CTX_new();
-	if(!ctx)
-		return false;
-	
-	//subControlInt(sizeof(cpt), DIM_BLOCK);
-	subControlInt(sizeof(cpt), (int)DIM_IV);
-	int cipher_len = (int)sizeof(cpt) - DIM_IV;
-	subControlInt(cipher_len, (int)DIM_TAG);
-	cipher_len -=(int)DIM_TAG;
-	subControlInt(cipher_len, (int)DIM_AAD);
-	cipher_len -= (int)DIM_AAD;
-	
-	unsigned char* cipher_buf = (unsigned char*) malloc (cipher_len);
-	unsigned char* buf = (unsigned char*) malloc (cipher_len);
-	unsigned char * aad = (unsigned char*) malloc ((int)DIM_AAD);
-	if(!cipher_buf || !buf)
-		return false;
-	
-	//Extract the IV
-	extract_data_from_array(iv, cpt, 0, DIM_IV); 
-	//Extract the ecrypted message
-	extract_data_from_array(cipher_buf, cpt, DIM_IV, cipher_len); 
-	//Extract the TAG
-	sumControl(cipher_len, DIM_BLOCK);
-	int start= cipher_len + DIM_BLOCK;
-	extract_data_from_array(tag, cpt, start, DIM_TAG);
-	//Extract AAD
-	sumControl(start, DIM_TAG);
-	start += DIM_TAG;
-	extract_data_from_array(aad, cpt, start, DIM_AAD);
-	
-	ret = EVP_DecryptInit(ctx, EVP_aes_128_gcm(), sessionkey, iv);
-	if(ret!= 1)
-		return false;
-	ret = EVP_DecryptUpdate (ctx, NULL, &howmany, aad, DIM_AAD);
-	if(ret!= 1)
-		return false;
-	subControlInt(cipher_len,DIM_BLOCK);
-	while(read < cipher_len - DIM_BLOCK){
-		ret = EVP_DecryptUpdate(ctx, buf + read, &howmany, cipher_buf + read, DIM_BLOCK);
-		if(ret!= 1)
-			return false;
-		sumControl (read, DIM_BLOCK);
-		read +=DIM_BLOCK;
-		sumControl(*pt_len, howmany);
-		*pt_len = howmany;
-	} 
-	ret = EVP_DecryptUpdate(ctx, buf + read, &howmany, cipher_buf+read, cipher_len - read);
-	if(ret !=1)
-		return false;
-	sumControl(*pt_len, howmany);
-	*pt_len +=howmany;
-	ret = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, DIM_TAG, tag);
-	if(ret !=1)
-		return false;
-	ret = EVP_DecryptFinal(ctx, buf+howmany, &howmany);
-	if(ret !=1)
-		return false;
-	
-	pt = (unsigned char*) malloc (*pt_len);
-	memcpy(pt, buf, *pt_len);
-	
-	EVP_CIPHER_CTX_free(ctx);
-	#pragma optimize("", off)
-   	memset(iv, 0, DIM_IV);
-   	memset(cipher_buf, 0, cipher_len);
-   	memset(buf, 0, cipher_len);
-   	memset(aad, 0, DIM_AAD);
-	#pragma optimize("", on)
-   	free(iv);
-   	free(cipher_buf);
-   	free(buf);
-   	free(aad);
-   	return true;
-	
-}
-*/
-
 //function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }
 unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen)
 {
@@ -607,8 +444,8 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	ret = RAND_bytes(&iv[0], DIM_IV);
 	if (ret!=1)
 		return NULL;
-	ret = EVP_CIPHER_CTX_new();
-    if(!ret)
+	ctx = EVP_CIPHER_CTX_new();
+    if(!ctx)
         return NULL;
 	ret = EVP_EncryptInit(ctx, EVP_aes_128_gcm(), key, iv);
     if(1 != ret)
@@ -630,10 +467,10 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
     EVP_CIPHER_CTX_free(ctx);
     *totalLen = ciphertext_len + DIM_TAG + DIM_IV + DIM_AAD;
 	outBuffer = (unsigned char*) malloc(*totalLen);
-	concat2Elements(outBuffer, iv, 0, DIM_IV);
-	concat2Elements(outBuffer, AAD, DIM_IV, DIM_AAD);
-	concat2Elements(outBuffer, tag, DIM_AAD + DIM_IV, DIM_TAG);
-	concat2Elements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
+	concatElements(outBuffer, iv, 0, DIM_IV);
+	concatElements(outBuffer, AAD, DIM_IV, DIM_AAD);
+	concatElements(outBuffer, tag, DIM_AAD + DIM_IV, DIM_TAG);
+	concatElements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
 	free(ciphertext);
 	free(iv);
 	return outBuffer;

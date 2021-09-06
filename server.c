@@ -153,9 +153,7 @@ X509* getServerCertificate (){
 void handle_auth(int sock, bool* users_online){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
-	printf("In handle_auth\n");
 	generateNonce(myNonce);
-	//printf("My nonce=%s\n", myNonce); 
 	
 	X509* cert = getServerCertificate();
 
@@ -185,7 +183,7 @@ void handle_auth(int sock, bool* users_online){
 	int signed_size = receive_len(sock);
 	unsigned char signed_msg[signed_size];
 	receive_obj(sock, signed_msg, signed_size); 
-	printf("Get signed nonce by username\n");
+	
 	
 	//Get the nonce and the username from the message I have received
 	unsigned char get_username[DIM_USERNAME];
@@ -219,7 +217,6 @@ void handle_auth(int sock, bool* users_online){
 	strncat(fileName, (char*)get_username, lim );
 	lim = DIM_SUFFIX_FILE_PUBKEY;
 	strncat(fileName, "_pubkey.pem", lim);
-	//printf("%s\n", fileName);
 	FILE* file = fopen(fileName, "r");
 	if(!file){
 		perror("fopen");
