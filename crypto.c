@@ -430,7 +430,7 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 
 }
 
-//function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }
+//function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }. It returns NULL in case of error
 unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen)
 {
     EVP_CIPHER_CTX *ctx;
