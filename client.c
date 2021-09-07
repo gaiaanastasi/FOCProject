@@ -33,7 +33,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	int pt_len;						//length of the plaintext
 	unsigned char* message;	//message that has to be sent
 	int msg_len = 0;				//length of the message to be sent
-	unsigned char* simKey;			//simmetric key
+	unsigned char* simKey;			//simmetric key used by the two clients
 	unsigned char* charPointer;		//generic char pointer 
 	fd_set readSet;					//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
@@ -47,10 +47,15 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		send_obj(sock, clientNonce, DIM_NONCE);
 	}
 	else{
+		receive_len(sock);
 		receive_obj(sock, clientNonce, DIM_NONCE);
 	}
 	dhPrivateKey = generateDHParams();
 	opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during the serialization of the key");
+		exit(-1);
+	}
 	concat2Elements(plaintext, clientNonce, opBuffer, DIM_NONCE, dimOpBuffer);
 	free(opBuffer);
 	dimOpBuffer = 0;
@@ -66,6 +71,10 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	free(opBuffer);
 	dimOpBuffer = receive_len(sock);
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	receive_obj(sock, opBuffer, dimOpBuffer);
 	//I received a message { <nonce> | <serializedDHPublicKey> } encrypted by means of my public key
 	plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
@@ -76,6 +85,10 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	free(opBuffer);
 	dimOpBuffer = DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	extract_data_from_array(opBuffer, plaintext, 0, DIM_NONCE);
 	if(memcmp(opBuffer, clientNonce, DIM_NONCE) != 0){
 		perror("The two nonces are not equal");
@@ -84,6 +97,10 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	free(opBuffer);
 	dimOpBuffer = pt_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
 	dhClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(dhClientPubK == NULL){
@@ -113,6 +130,12 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		}
 		if(FD_ISSET(0, &readSet)){
 			//the user has typed something
+			pt_len = 256;
+			plaintext = (unsigned char*) malloc(pt_len);
+			if(plaintext == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
 			if(fgets(plaintext, 256, stdin) == NULL){
 				perror("Error during the input of the message");
 				exit(-1);
@@ -123,10 +146,19 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 
 			//control if the user want to leave the conversation
 			if(strcmp(plaintext, "<exit>") == 0){
-				dimOpBuffer = strlen("<exit>") + 1;
-				opBuffer = (unsigned char*) malloc(dimOpBuffer);
-				strcpy(opBuffer, "<exit>");
-				message = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &msg_len);
+				//the first time I send the message to the other client, to notify him that I'm leaving the chat
+				pt_len = strlen("<exit>") + 1;
+				message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
+				if(message == NULL){
+					perror("Error during encryption of the message");
+					exit(-1);
+				}
+				send_obj(sock, message, msg_len);
+				free(message);
+				msg_len = 0;
+
+				//The second time I send the message to the server, to notify my log-off
+				message = symmetricEncryption(plaintext, pt_len, serverSimKey, &msg_len);
 				if(message == NULL){
 					perror("Error during encryption of the message");
 					exit(-1);
@@ -134,7 +166,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				send_obj(sock, message, msg_len);
 				free(message);
 				free(plaintext);
-				free(opBuffer);
 				return true;
 			}
 
@@ -151,12 +182,18 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			free(plaintext);
 			msg_len = 0;
 			pt_len = 0;
-		} else if(FD_ISSET(sock, &readSet)){
+		} 
+		else if(FD_ISSET(sock, &readSet)){
 			//the user received a new message
 			msg_len = receive_len(sock);
 			message = (unsigned char*) malloc(msg_len);
+			if(message == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
 			receive_obj(sock, message, msg_len);
-			//we have to check if the message has been sent by the server. In such a case, it means that the plaintext is "<exit>"
+			/*
+			//we have to check if the message has been sent by the server. In such a case, the plaintext would be "<exit>"
 			//and it means that the other client has logged off
 			plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey);
 			if(plaintext == NULL){
@@ -165,10 +202,12 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			}
 			if(strcmp(plaintext, "<exit>") == 0){
 				printf("\n%s has logged off\n", clientUsername);
+				free(plaintext);
+				free(message);
 				return false;
 			}
 			free(plaintext);
-			pt_len = 0;
+			*/
 			plaintext = symmetricDecription(message, msg_len, &pt_len, simKey);
 			if(plaintext == NULL){
 				perror("Error during the decription of the message");
@@ -178,6 +217,11 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				perror("The received message is too long");
 				exit(-1);
 			}
+			//control if the other client has logged off
+			if(strcmp(plaintext, "<exit>") == 0){
+				printf("\n%s has logged off\n", clientUsername);
+				break;
+			}
 			printf("\n");
 			printf("%s: ", clientUsername);
 			printf("%s\n", plaintext);
@@ -186,6 +230,10 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			pt_len = msg_len = 0;
 		}
 	}
+	EVP_PKEY_free(clientPubK);
+	EVP_PKEY_free(dhPrivateKey);
+	EVP_PKEY_free(dhClientPubK);
+	free(simKey);
 	return false;
 }
 
@@ -199,8 +247,6 @@ int main(int argc, const char** argv){
 	int recv_len = 0;		//length of the received message
 	unsigned char* message_send;
 	int send_len = 0;		//length of the message to be sent
-	unsigned char* ciphertext;		//result of the encryption of the message that has to be sent
-	int cpt_len = 0;		//length of the cyphertext
 	unsigned char* plaintext;
 	int pt_len = 0;			//length of the plaintext
 	unsigned char* serverSymmetricKey;
@@ -353,7 +399,8 @@ int main(int argc, const char** argv){
 		perror("Error during the extraction of the certificate of the server\n");
 		exit(-1);
 	}
-	serverCertificate = d2i_X509(NULL, (const unsigned char**)&opBuffer, dimOpBuffer);
+	charPointer = opBuffer;
+	serverCertificate = d2i_X509(NULL, (const unsigned char**)&charPointer, dimOpBuffer);
 	
 	if(serverCertificate == NULL){
 		perror("Error during deserialization of the certificate of the server\n");
@@ -362,7 +409,7 @@ int main(int argc, const char** argv){
 
 	//now that I have the certificate, its serialization is useless
 	//OPENSSL_free(opBuffer); //DA RIVEDERE
-	//free(opBuffer);
+	free(opBuffer);
 	dimOpBuffer = 0;
 	//certificate verification
 	
@@ -382,8 +429,8 @@ int main(int argc, const char** argv){
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
 	signature = (unsigned char*) malloc(EVP_PKEY_size(myPrivK));
-	if(!message_recv){
-		perror("malloc");
+	if(signature == NULL){
+		perror("Error during malloc()");
 		exit(-1);
 	}
 	signatureFunction(serverNonce, DIM_NONCE, signature, &signatureLen, myPrivK);
@@ -414,6 +461,8 @@ int main(int argc, const char** argv){
 	concatElements(message_send, signature, lim, signatureLen);
 	send_obj(sock, message_send, send_len);
 	free(message_send);
+	free(signature);
+	free(buf);
 	send_len = 0;
 	signatureLen = 0;
 	dimOpBuffer =0;
@@ -444,7 +493,9 @@ int main(int argc, const char** argv){
 		perror("Error during serialization of the DH public key\n");
 		exit(-1);
 	}
-	//opBuffer contains the DH public key
+	//opBuffer contains the serialized DH public key
+
+	//DA QUI INIZIAVA COMMENTO
 
 
 	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
@@ -494,6 +545,10 @@ int main(int argc, const char** argv){
 	//RECEIVING DH PUBLIC KEY OF THE SERVER
 	recv_len = receive_len(sock);
 	message_recv = (unsigned char*) malloc(recv_len);
+	if(message_recv == NULL){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	receive_obj(sock, message_recv, recv_len);
 
 	//asymmetric decryption
@@ -519,6 +574,10 @@ int main(int argc, const char** argv){
 	subControlInt(pt_len, DIM_NONCE);
 	dimOpBuffer = pt_len - DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
+	if(opBuffer == NULL){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
 	DHServerPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(DHServerPubK == NULL){
@@ -526,6 +585,10 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	serverSymmetricKey = symmetricKeyDerivation_for_aes_128_gcm(dhPrivateKey, DHServerPubK);
+	if(serverSymmetricKey == NULL){
+		perror("Error during the derivation of the shared simmetric key");
+		exit(-1);
+	}
 
 	//now that we have a fresh symmetric key, some informations are useless
 	EVP_PKEY_free(serverPubK);
@@ -551,7 +614,7 @@ int main(int argc, const char** argv){
 		if(FD_ISSET(0, &readFdSet)){
 			//the user has typed something
 			if(scanf("%1ld", &command) != 1){
-				perror("scanf function has read a wrong number of items \n");
+				perror("scanf function has read a wrong number of items");
 				exit(-1);
 			}
 			while(getchar() != '\n');		//cleaning the stdin buffer
@@ -559,10 +622,18 @@ int main(int argc, const char** argv){
 				case 1:		//online people
 					send_len = strlen("online_people") + 1;
 					message_send = (unsigned char*) malloc(send_len);
+					if(message_send == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
 					strcpy(message_send, "online_people");
 					send_obj(sock, message_send, send_len);
 					recv_len = receive_len(sock);
 					message_recv = (unsigned char*) malloc(recv_len);
+					if(message_recv == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
 					receive_obj(sock, message_recv, recv_len);
 					printf("%s", message_recv);
 					free(message_recv);
@@ -574,15 +645,30 @@ int main(int argc, const char** argv){
 				case 2:		//request to talk
 					printf("who do you want to send the request to?\n");
 					opBuffer = (unsigned char*) malloc(DIM_USERNAME);
-					fgets(opBuffer, DIM_USERNAME, stdin);
+					if(opBuffer == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
+					if(fgets(opBuffer, DIM_USERNAME, stdin) == NULL){
+						perror("Error during the fgets()");
+						exit(-1);
+					}
 					charPointer = strchr(opBuffer, '\n');
 					if(charPointer)
 						*charPointer = '\0';
 					sumControl(DIM_USERNAME, strlen("request") + 1);
 					pt_len = DIM_USERNAME + strlen("request") + 1;
 					plaintext = (unsigned char*) malloc(pt_len);
+					if(plaintext == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
 					concat2Elements(plaintext, opBuffer, "request", DIM_USERNAME, strlen("request") + 1);
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					if(message_send == NULL){
+						perror("Error during the encryption of the message");
+						exit(-1);
+					}
 					send_obj(sock, message_send, send_len);
 					send_len = 0;
 					free(message_send);
@@ -593,16 +679,26 @@ int main(int argc, const char** argv){
 					pt_len = 0;
 					recv_len = receive_len(sock);
 					message_recv = (unsigned char*) malloc(recv_len);
+					if(message_recv == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
 					receive_obj(sock, message_recv, recv_len);
 					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					if(plaintext == NULL){
+						perror("Error during the symmetric decription");
+						exit(-1);
+					}
 					if(strcmp(plaintext, "refused") == 0){
 						printf("Your request to talk with %s has been refused\n", opBuffer);
 						free(opBuffer);
+						free(plaintext);
+						free(message_recv);
 						dimOpBuffer = 0;
 						break;
 					}
 
-					//request accepted, the plaintext is the public key of the client
+					//request accepted, the plaintext is the serialized public key of the client
 					if(communication_with_other_client(sock, plaintext, pt_len, myPrivK, true, opBuffer, serverSymmetricKey)){
 						continueWhile = 0;
 					}
@@ -610,6 +706,7 @@ int main(int argc, const char** argv){
 					dimOpBuffer = 0;
 					free(plaintext);
 					pt_len = 0;
+					free(message_recv);
 					break;
 
 				case 3:		//logout
@@ -625,11 +722,96 @@ int main(int argc, const char** argv){
 			//a request to talk has arrived
 			recv_len = receive_len(sock);
 			message_recv = (unsigned char*) malloc(recv_len);
+			if(message_recv == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
 			receive_obj(sock, message_recv, recv_len);
 			//the message is encrypted by means of the symmetric key used by server and client
-			
+			plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+			//the plaintext would have the format { <username that sent the request> | <"request"> }
+			if(plaintext == NULL){
+				perror("Error during the symmetric decription");
+				exit(-1);
+			}
+			if(pt_len <= DIM_USERNAME){
+				perror("Unrecognized format of the received message");
+				exit(-1);
+			}
+			dimOpBuffer = pt_len - DIM_USERNAME;
+			opBuffer = (unsigned char*) malloc(dimOpBuffer);
+			if(opBuffer == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
+			extract_data_from_array(opBuffer, plaintext, DIM_USERNAME, pt_len);
+			if(strcmp(opBuffer, "request") != 0){
+				perror("Unrecognized format of the received message");
+				exit(-1);
+			}
+			free(opBuffer);
+			dimOpBuffer = DIM_USERNAME;
+			opBuffer = (unsigned char*) malloc(dimOpBuffer);
+			if(opBuffer == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
+			extract_data_from_array(opBuffer, plaintext, 0, DIM_USERNAME);
+			free(plaintext);
+			pt_len = 0;
+			printf("You received a request to talk from %s. Type 'y' if you want to accept or 'n' if you want to refuse it\n", opBuffer);
+			sumControl(DIM_USERNAME, 2);
+			pt_len = DIM_USERNAME + 2;
+			plaintext = (unsigned char*) malloc(pt_len);
+			if(plaintext == NULL){
+				perror("Error during malloc()");
+				exit(-1);
+			}
+			if(fgets(plaintext, 2, stdin) == NULL){
+				perror("Error during fgets()");
+				exit(-1);
+			}
+			charPointer = strchr(plaintext, '\n');
+			if(charPointer)
+				*charPointer = '\0';
+			concatElements(plaintext, opBuffer, 2, dimOpBuffer);
+			message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+			if(message_send == NULL){
+				perror("Error during the encryption of the message");
+				exit(-1);
+			}
+			//send the message formatted like { <"y"/"n"> | <username that sent the request> }
+			send_obj(sock, message_send, send_len);
+			//I can use strcmp with plaintext because it contains for sure the '\0' character in position plaintext[1]
+			free(message_send);
+			free(message_recv);
+			if(strcmp(plaintext, "y") == 0){
+				//request accepted
+				printf("you have accepted the request to talk with %s\n", opBuffer);
+				recv_len = receive_len(sock);
+				message_recv = (unsigned char*) malloc(recv_len);
+				if(message_recv == NULL){
+					perror("Error during malloc()");
+					exit(-1);
+				}
+				//the message sent by the server contains the public key of the other client, encrypted by means of the simmetric key used by server and client
+				plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+				if(plaintext == NULL){
+					perror("Error during symmetric decription");
+					exit(-1);
+				}
+				if(communication_with_other_client(sock, plaintext, pt_len, myPivK, false, opBuffer, serverSymmetricKey))
+					continueWhile = 0;
+				free(plaintext);
+				free(opBuffer);
+				free(message_recv);
+			}
+			else{
+				printf("you have rejected the request to talk with %s\n", opBuffer);
+				free(opBuffer);
+			}
 		}
-	}*/
+	}
 	EVP_PKEY_free(myPrivK);
 	EVP_PKEY_free(myPubK);
 	X509_STORE_free(certStore);

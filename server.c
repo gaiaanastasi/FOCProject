@@ -16,19 +16,79 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#include <stdbool.h>
 
 
 
 char* server_port = "4242";
 
+//list of integer
+struct intList{
+	int val;
+	struct intList* next;
+};
 
+struct userStruct{
+	bool online;	//true if the user is online, false otherwise
+	char username[DIM_USERNAME];	//username of the user
+	struct intList* cpt_len;	//list of lengths of the ciphertexts that are written in the file
+	pthread_mutex_t userMutex;	//mutex that manage the access to the element of this structure and to the relative file
+};
+
+//Function that adds at the end of the list a new integer. Returns false in case of error
+bool addIntList(struct intLista** testa, int num){
+	struct intLista* p;
+	if(*testa == NULL){
+		//the list is empty
+		*testa = (int*) malloc(sizeof(struct intList));
+		if(*testa == NULL)
+			return false;
+		(*testa) -> val = num;
+		(*testa) -> next = NULL;
+		return true;
+	}
+	p = *testa;
+	while(p -> next!=NULL)
+		p = p -> next;
+
+	p -> next = (struct intLista*) malloc(sizeof(struct intList));
+	if(p -> next == NULL)
+		return false;
+	p = p->next;
+	p -> val = num;
+	p -> next = NULL;
+}
+
+//Function that remove the first element of a list. Returns false in case of error
+bool removeFirstValueList(struct intLista** testa){
+	struct intLista* s;
+	if(*testa==NULL)
+		return false;
+	s = *testa;
+	*testa = (*testa) -> next;
+	free(s);
+}
+
+//Returns the sum of all the values of a list of integer. It returns -1 if the list is empty
+int listTotalLen(struct intList* testa){
+	int sum = 0;
+	struct intList* p;
+	p = testa;
+	if(p == NULL)
+		return -1;
+	while(p != NULL){
+		sum += p -> val;
+		p = p -> next;
+	}
+	return sum;
+}
 
 unsigned char myNonce[DIM_NONCE];
-pthread_mutex_t mutex;
+//pthread_mutex_t mutex; //commentato da Matte pthread_mutex_t mutex;
 unsigned char username[DIM_USERNAME];
 unsigned char clientNonce[DIM_NONCE];
 unsigned char password[DIM_PASSWORD];
+
 
 //Mapping from username to unsigned int
 unsigned int mappingUserToInt(unsigned char* username){
@@ -41,21 +101,48 @@ unsigned char* mappingIntToUser(unsigned int i){
 	unsigned char* ret;
 	if(i==0) {
 		ret = (unsigned char*) malloc (strlen("matteo")+1);
-		strncpy((char*)ret, "matteo", strlen("matteo"));
+		strncpy((char*)ret, "matteo", strlen("matteo") + 1);
 	}
 	if(i==1) {
 		ret = (unsigned char*) malloc (strlen("gaia")+1);
-		strncpy((char*)ret, "gaia", strlen("gaia"));
+		strncpy((char*)ret, "gaia", strlen("gaia") + 1);
 	}
 	else {
 		ret = (unsigned char*) malloc (strlen("")+1);
-		strncpy((char*)ret, "", strlen(""));
+		strncpy((char*)ret, "", strlen("") + 1);
 	}
 	return ret;
 
 }
 
+void initUsers(struct userStruct* users){
+	pthread_mutexattr_t mutexattr;
+	int i;
+	unsigned char* username;
+	int rc = pthread_mutexattr_init(&mutexattr);
+	if (rc != 0){
+		perror("pthread_mutexattr_init");
+		exit(-1);
+	}
+	rc = pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
+	if (rc != 0){
+		perror("pthread_mutexattr_setpshared");
+		exit(-1);
+	}
+	for(i = 0; i < TOT_USERS; i++){
+		rc = pthread_mutex_init(&users[i].userMutex, &mutexattr);
+		if (rc != 0){
+			perror("pthread_mutex_init");
+			exit(-1);
+		}
+		users[i].cpt_len = NULL;
+		username = mappingIntToUser(i);
+		strcpy(users[i].username, username);
+		free(username);
+	}
+}
 
+/* commentato da Matte
 //Mark new user as online
 void addUsertoList(unsigned char* username, bool* online_users){
 	//GLock on the shared resource
@@ -79,19 +166,152 @@ void addUsertoList(unsigned char* username, bool* online_users){
 	}
 	
 	
+}*/
+
+//Mark new user as online
+void addUsertoList(unsigned char* username, struct userStruct* users){
+	//GLock on the shared resource
+	int intUser = mappingUserToInt(username);
+	if(intUser == -1){
+		perror("user not found");
+		exit(-1);
+	}
+	int ret = pthread_mutex_lock(&users[intUser].userMutex);
+	if(ret != 0){
+		perror("lock");
+		exit(-1);
+	}
+	//Modify the variable 
+	users[intUser].online = true;
+	//Unlock the shared resource
+	ret = pthread_mutex_unlock(&users[intUser].userMutex);
+	if(ret != 0){
+		perror("unlock");
+		exit(-1);
+	}
 }
 
-unsigned int getNumberOfOnlineUsers(bool* online_users){
+//Write the message in a file called messages/<username>_messages.txt
+void forwardMessage(unsigned char* message, int messageLen, unsigned char* username, struct userStruct* users){
+	int intUser;
+	FILE* fd;
+	char fileName[64];
+	int ret;
+	strcpy(fileName, "messages/");
+	strcat(fileName, username);
+	strcat(fileName, "_messages.txt");
+	intUser = mappingUserToInt(username);
+	pthread_mutex_lock(&users[intUser].userMutex);
+	fd = fopen(fileName, "ab");
+	if(fd == NULL){
+		perror("Error during fopen()");
+		exit(-1);
+	}
+	ret = fwrite(message, messageLen, 1, fd);
+	if(ret <= 0){
+		perror("Error during the fwrite()");
+		exit(-1);
+	}
+	ret = fclose(fd);
+	if(ret != 0){
+		perror("Error during fclose()");
+		exit(-1);
+	}
+	if(!addIntList(&(users[intUser].cpt_len), messageLen)){
+		perror("Error during add into the list");
+		exit(-1);
+	};
+	pthread_mutex_unlock(&users[intUser].userMutex);
+}
+
+//Read the first message in the file called messages/<username>_messages.txt
+unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct userStruct* users){
+	int intUser;
+	unsigned char* message;
+	unsigned char* remainingBuf;
+	FILE* fd;
+	char fileName[64];
+	int ret;
+	int remainingLen;	//length of the remaining part of the content of the file
+	strcpy(fileName, "messages/");
+	strcat(fileName, username);
+	strcat(fileName, "_messages.txt");
+	intUser = mappingUserToInt(username);
+	if(users[intUser].cpt_len == NULL){
+		perror("The list is empty");
+		exit(-1);
+	}
+	//the size of the first message is in the first element of the list
+	*messageLen = users[intUser].cpt_len -> val;
+	remainingLen = listTotalLen(users[intUser].cpt_len) - *messageLen;
+	message = (unsigned char*) malloc(*messageLen);
+	remainingBuf = (unsigned char*) malloc(remainingLen);
+	if(!message || !remainingBuf){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	pthread_mutex_lock(&users[intUser].userMutex);
+	fd = fopen(fileName, "rb");
+	if(fd == NULL){
+		perror("Error during fopen()");
+		exit(-1);
+	}
+	ret = fread(message, *messageLen, 1, fd);
+	if(ret <= 0){
+		perror("Error during fread()");
+		exit(-1);
+	}
+	ret = fseek(fd, *messageLen, SEEK_SET);
+	if(ret != 0){
+		perror("Error during fseek()");
+		exit(-1);
+	}
+	ret = fread(remainingBuf, remainingLen, 1, fd);
+	if(ret <= 0){
+		perror("Error during fread()");
+		exit(-1);
+	}
+	ret = fclose(fd);
+	if(ret != 0){
+		perror("Error during fclose()");
+		exit(-1);
+	}
+	if(!removeFirstValueList(&users[intUser].cpt_len)){
+		perror("Error removing an element from the list");
+		exit(-1);
+	}
+	//Now I have to delete from the file the part just read
+	fd = fopen(fileName, "wb");
+	if(fd == NULL){
+		perror("Error during fopen()");
+		exit(-1);
+	}
+	ret = fwrite(remainingBuf, remainingLen, 1, fd);
+	if(ret <= 0){
+		perror("Error during the fwrite()");
+		exit(-1);
+	}
+	ret = fclose(fd);
+	if(ret != 0){
+		perror("Error during fclose()");
+		exit(-1);
+	}
+	pthread_mutex_unlock(&users[intUser].userMutex);
+	free(remainingBuf);
+	return message;
+}
+
+unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 	unsigned int tot = 0;
 	for (unsigned int i=0; i<TOT_USERS; i++){
-		if(online_users[i]) tot++;
+		if(users[i].online) tot++;
 	}
 	return tot;
 }
 
-void getOnlineUser (int sock, bool* online_users){
+void getOnlineUser (int sock, bool* users){
 	//Get the total number of active user
-	unsigned int tot = getNumberOfOnlineUsers(online_users);
+	unsigned int tot = getNumberOfOnlineUsers(users);
 	if (tot == 0) {
 		perror("error in getNumberOfOnlineUsers");
 		exit(-1);
@@ -103,7 +323,7 @@ void getOnlineUser (int sock, bool* online_users){
 	for (unsigned int i=0; i<TOT_USERS; i++){
 		//Get the username of each online user
 		unsigned char* mapping = mappingIntToUser(i);
-		if(online_users) {
+		if(users) {
 			//Store it in an array
 			online[last] = mapping;
 			last++;
@@ -114,9 +334,7 @@ void getOnlineUser (int sock, bool* online_users){
 	   	free(mapping);
 			
 	}
-	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE
-	
-	
+	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE	
 }
 
 
@@ -162,7 +380,7 @@ EVP_PKEY* getMyPrivKey(){
 }
 
 
-void handle_auth(int sock, bool* users_online){
+void handle_auth(int sock, bool* users){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
@@ -250,7 +468,7 @@ void handle_auth(int sock, bool* users_online){
 	memcpy(username, get_username, DIM_USERNAME);
 	
 	//Update online users' list
-	//addUsertoList(get_username, users_online );
+	//addUsertoList(get_username, users );
 	
 		
 
@@ -432,18 +650,21 @@ int main (int argc, const char** argv){
 	fdmax = socket_ascolto;	
 	FD_SET(socket_ascolto, &read_ready);
 
-	bool* users_online = (bool*) mmap(NULL, TOT_USERS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);	
+	//commentato da Matte bool* users = (bool*) mmap(NULL, TOT_USERS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);	
 	/*int fd = open(argv[1], O_RDONLY);
 	if(fd==-1){
 		perror("Open fail");
 		exit(-1);
 	}*/
+	struct userStruct* users = (struct userStruct*) mmap(NULL, TOT_USERS * sizeof(struct userStruct), PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 	
-	if (users_online == MAP_FAILED){
+	if (users == MAP_FAILED){
 		perror("MAP_FAILED");
 		exit(-1);
 	}
-	
+	initUsers(users);
+	/*
+	commentato da Matte
 	 pthread_mutexattr_t mutexattr;
 	 int rc = pthread_mutexattr_init(&mutexattr);
 	 if (rc != 0){
@@ -459,7 +680,7 @@ int main (int argc, const char** argv){
 	 if (rc != 0){
 	   perror("pthread_mutex_init");
 	   exit(-1);
-	  }
+	  }*/
 	    
 	
 	while(1){
@@ -481,8 +702,9 @@ int main (int argc, const char** argv){
 					printf("Authentication request arrived\n");
 						
 					memcpy(password, pw, DIM_PASSWORD);
-					handle_auth(socket_com, users_online);
+					handle_auth(socket_com, users);
 					establishDHExhange(socket_com);
+					
 					
 					
 				}
