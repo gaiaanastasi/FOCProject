@@ -18,13 +18,7 @@
 #include <fcntl.h>
 
 
-#define DIM_SUFFIX_FILE_PUBKEY 12
-#define DIM_SUFFIX_FILE_PRIVKEY 13
-#define DIM_PASSWORD 32
-#define DIR_SIZE 6
-#define DIR "keys/"
-#define DIM_NONCE 16
-#define DIM_USERNAME 32
+
 
 char* server_port = "4242";
 
@@ -32,6 +26,9 @@ char* server_port = "4242";
 
 unsigned char myNonce[DIM_NONCE];
 pthread_mutex_t mutex;
+unsigned char username[DIM_USERNAME];
+unsigned char clientNonce[DIM_NONCE];
+unsigned char password[DIM_PASSWORD];
 
 //Mapping from username to unsigned int
 unsigned int mappingUserToInt(unsigned char* username){
@@ -149,6 +146,21 @@ X509* getServerCertificate (){
 	
 }
 
+EVP_PKEY* getMyPrivKey(){
+	FILE* file = fopen("certificates/serverprvkey.pem", "r");
+	if(file == NULL){
+		perror("Error during the opening of a file\n");
+		exit(-1);
+	}
+	EVP_PKEY* myPrivK = PEM_read_PrivateKey(file, NULL, NULL, password);
+	if(myPrivK == NULL){
+		perror("Error during the loading of the private key, maybe wrong password?\n");
+		exit(-1);
+	}
+	fclose(file);
+	return myPrivK;
+}
+
 
 void handle_auth(int sock, bool* users_online){
 	//Server retrieves his certificate and generate a nonce
@@ -187,56 +199,39 @@ void handle_auth(int sock, bool* users_online){
 	
 	//Get the nonce and the username from the message I have received
 	unsigned char get_username[DIM_USERNAME];
-	//Get username
-	extract_data_from_array(get_username, signed_msg, 0, DIM_USERNAME);
+	//Get client nonce
+	extract_data_from_array(clientNonce, signed_msg, 0, DIM_NONCE);
 	sumControl(DIM_USERNAME, DIM_NONCE);
-	int nonce_part = DIM_NONCE + DIM_USERNAME;
+	int lim = DIM_USERNAME + DIM_NONCE;
+	//Get username
+	extract_data_from_array(get_username, signed_msg, DIM_NONCE, lim);
+	sumControl(lim, DIM_NONCE);
+	lim += DIM_NONCE;
 	unsigned char signed_nonce[DIM_NONCE];
 	//Get nonce
-	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME, nonce_part);
-	subControlInt(signed_size, nonce_part);
-	int signature_len = signed_size - nonce_part;
+	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME+DIM_NONCE, lim);
+	subControlInt(signed_size, lim);
+	int signature_len = signed_size - lim;
 	unsigned char* signature = (unsigned char*) malloc(signature_len);
 	if(!signature){
 		perror("malloc");
 		exit(-1);
 	}
 	//Get digital signature
-	extract_data_from_array(signature, signed_msg, nonce_part, signed_size);
+	extract_data_from_array(signature, signed_msg, lim, signed_size);
 	
 	//Get the public key from pem file
-	EVP_PKEY* pubkey;
-	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
-	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY+DIR_SIZE));
-	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
-	char fileName[name_size];
-	int lim = DIR_SIZE; 
-	//Get file name
-	strncpy(fileName, (char*)DIR, lim );
-	lim = DIM_USERNAME; 
-	strncat(fileName, (char*)get_username, lim );
-	lim = DIM_SUFFIX_FILE_PUBKEY;
-	strncat(fileName, "_pubkey.pem", lim);
-	FILE* file = fopen(fileName, "r");
-	if(!file){
-		perror("fopen");
-		exit(-1);
-	}
+	EVP_PKEY* pubkey = getUserPbkey(get_username);
 	
-	//Retrive client's public key
-	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
-	if (!pubkey){
-		perror("Pubkey not found");
-		exit(-1);
-	}
-	fclose(file);
+	//Get file name
+	
 
 	//Signature verification
 	bool ret =verifySignature(signature, myNonce, signature_len, DIM_NONCE, pubkey);
 	//Comparison between myNonce and the nonce the client has sent me back
 	bool ret2 = comparisonUnsignedChar(myNonce, signed_nonce, DIM_NONCE);
 	if (ret && ret2){
-		printf("%s authentication succeded!", get_username);
+		printf("%s authentication succeded \n", get_username);
 		//I notify the result of the authentication to the user
 		send_obj(sock, "OK", 3);
 
@@ -250,6 +245,9 @@ void handle_auth(int sock, bool* users_online){
 	}
 	EVP_PKEY_free(pubkey);
 	free(signature);
+
+	memset(username, 0, DIM_USERNAME);
+	memcpy(username, get_username, DIM_USERNAME);
 	
 	//Update online users' list
 	//addUsertoList(get_username, users_online );
@@ -258,8 +256,127 @@ void handle_auth(int sock, bool* users_online){
 
 }
 
+void establishDHExhange(int sock){
+	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
+	int lim = 0;
+	EVP_PKEY* dhPrivateKey = generateDHParams();
+	EVP_PKEY* myPrivK;
+	EVP_PKEY* DHClientPubK;
+	unsigned char* sessionKey;
+	printf("DH parameters generated for session with %s \n", username);
+	int dimOpBuffer = 0;
+	unsigned char* opBuffer = NULL;
+	unsigned char* buf = NULL;
+	unsigned char* message_send = NULL;
+	unsigned char* message_recv = NULL;
+	int send_len=0;
+	int recv_len =0;
+	int pt_len = 0;
+	unsigned char* plaintext = NULL;
+
+	myPrivK = getMyPrivKey();
+
+	//SERIALIZATION OF THE DH PUBLIC KEY
+	opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
+	if(opBuffer == NULL){
+		perror("Error during serialization of the DH public key\n");
+		exit(-1);
+	}
+	
+	//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (DH PUB KEY EXCHANGE)
+	sumControl (DIM_NONCE, DIM_NONCE);
+	lim = DIM_NONCE+DIM_NONCE;
+	sumControl(lim, dimOpBuffer);
+	lim += dimOpBuffer;
+	buf = (unsigned char*) malloc(lim);
+	/*sumControl(lim, DIM_NONCE);
+	pt_len = lim + DIM_NONCE;
+	plaintext = (unsigned char*) malloc(pt_len);*/
+	//MESSAGE STRUCTURE: <serverNonce> | <clientNonce> | <pubkeyDH>
+	concatElements(buf, myNonce, 0, DIM_NONCE);
+	concatElements(buf, clientNonce, DIM_NONCE, DIM_NONCE);
+	concatElements(buf, opBuffer, DIM_NONCE + DIM_NONCE, dimOpBuffer);
+	/*subControlInt(pt_len,DIM_NONCE);
+	concat2Elements(plaintext, myNonce, buf, DIM_NONCE, lim);*/
+
+	EVP_PKEY* clientPubK = getUserPbkey(username);
+
+	message_send = from_pt_to_DigEnv(buf, lim, clientPubK, &send_len);
+	if(message_send == NULL){
+		perror("Error during the asymmetric encryption\n");
+		exit(-1);
+	}
+	//MESSAGE STRUCTURE: <encrypted_key> | <IV> | <ciphertext>
+	send_obj(sock, message_send, send_len);
+
+	//plaintext already freed by from_pt_to_DigEnv()
+	free(message_send);
+	send_len = 0;
+	
+	//delete public key from opBuffer
+#pragma optimize("", off)
+   	memset(opBuffer, 0, dimOpBuffer);
+	memset(buf, 0, lim);
+#pragma optimize("", on)
+	free(opBuffer);
+	free(buf);
+	dimOpBuffer = 0;
+	lim = 0;
+
+	//Get client public key
+	recv_len = receive_len(sock);
+	message_recv = (unsigned char*) malloc(recv_len);
+	receive_obj(sock, message_recv, recv_len);
+	//asymmetric encryption
+	plaintext = from_DigEnv_to_PlainText(message_recv, recv_len, &pt_len, myPrivK);
+	if(plaintext == NULL){
+		perror("Error during the asimmetric decryption\n");
+		exit(-1);
+	}
+
+	//Check on the nonce
+	dimOpBuffer = DIM_NONCE;
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the nonce sent in the last message
+	sumControl (DIM_NONCE, DIM_NONCE);
+	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, DIM_NONCE + DIM_NONCE);
+	if(memcmp(opBuffer, myNonce, DIM_NONCE) != 0){
+		perror("The two nonces are different\n");
+		exit(-1);
+	}
+	free(opBuffer);
+	dimOpBuffer = 0;
+
+	//Deserialization of the client's DH public key
+	subControlInt(pt_len, DIM_NONCE);
+	dimOpBuffer = pt_len - DIM_NONCE;
+	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
+	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
+	DHClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
+	if(DHClientPubK == NULL){
+		perror("Error during deserialization of the DH public key\n");
+		exit(-1);
+	}
+	sessionKey = symmetricKeyDerivation_for_aes_128_gcm(dhPrivateKey, DHClientPubK);
+
+	//now that we have a fresh symmetric key, some informations are useless
+	EVP_PKEY_free(DHClientPubK);
+	EVP_PKEY_free(dhPrivateKey);
+	free(opBuffer);
+	dimOpBuffer = 0;
+	free(plaintext);
+	free(message_recv);
+	recv_len = 0;
+
+	printf("QUI\n");
+	
+}
+
 int main (int argc, const char** argv){
     int socket_ascolto; //Socket where our server wait for connections
+	printf("Insert password:");
+	unsigned char pw[DIM_PASSWORD];
+	getPassword(pw);
+	printf("\n");
 				
 	socket_ascolto = socket(AF_INET, SOCK_STREAM, 0);
 	
@@ -363,7 +480,9 @@ int main (int argc, const char** argv){
 					
 					printf("Authentication request arrived\n");
 						
+					memcpy(password, pw, DIM_PASSWORD);
 					handle_auth(socket_com, users_online);
+					establishDHExhange(socket_com);
 					
 					
 				}
@@ -376,110 +495,6 @@ int main (int argc, const char** argv){
 					else if (pid == 0){		//I am in the child process
 						close(socket_ascolto);
 						
-						
-						
-						/*//EDHKE
-						EVP_PKEY* params = EVP_PKEY_new();
-						if(params == NULL){
-							perror("Error during instantiation of DH parameters\n");
-							exit(-1);
-						}
-						generateDHParams(params);
-						
-						EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(params, NULL);
-						if(ctx == NULL){
-							perror("Error during the allocation of the context for DH key generation\n");
-							exit(-1);
-						}
-						EVP_PKEY* my_prvkey = NULL;
-						EVP_PKEY_keygen_init(ctx);
-						if(ret != 1){
-							perror("Error during initialization of the context for DH key generation\n");
-							exit(-1);
-						}
-						EVP_PKEY_keygen(ctx, &my_prvkey);
-						if(ret != 1){
-							perror("Error during generation of Diffie-Hellman key\n");
-							exit(-1);
-						}	
-						EVP_PKEY_CTX_free(ctx);
-						
-						//Serialize the key to send that over socket
-						BIO* mbio = BIO_new(BIO_s_mem());
-						if (!mbio){
-							perror("Error in BIO allocation \n");
-							exit(-1);
-						} 
-						PEM_write_bio_PUBKEY(mbio, my_prvkey);
-						char* pubkey_buf = NULL;
-						long pubkey_size = BIO_get_mem_data(mbio, &pubkey_buf);
-						
-						//DEVO CONCATENARCI IL NONCE E CIFRARE CON LA CHIAVE PUBBLICA DEL CLIENT
-						
-						//send_obj (/*finire*///);
-						/*free(mbio);
-						
-						
-						//Receive the response from the client
-						int complete_msg_size = (int) receive_len (i);
-						char* client_message = (char*) malloc (complete_msg_size);
-						receive_obj(i, client_message, complete_msg_size);
-						
-						//DECIFRO RISPOSTA CON LA CHIAVE PRIVATA SERVER
-						
-						#pragma optimize("", off)
-						   	memset(client_message, 0, complete_msg_size);
-						#pragma optimize("", on)
-						   	free(client_message);
-						/*
-						
-						if(!checkNonce(myNonce, receiveNonce)){
-							perror("The session isn't fresh \n");
-						}
-						
-						mbio = BIO_new (BIO_s_mem());
-						if (!mbio){
-							perror("Error in BIO allocation \n");
-							exit(-1);
-						} 
-						BIO_write(mbio, client_pubkey, client_key_size);
-						EVP_PKEY* client_key = PEM_read_bio_PUBKEY(mbio, NULL, NULL, NULL);
-						BIO_free(mbio);
-						
-						//Secret Derivation
-						ctx = EVP_PKEY_CTX_new(params, NULL);
-						if(ctx == NULL){
-							perror("Error during the allocation of the context for DH secret derivation\n");
-							exit(-1);
-						}
-						EVP_PKEY* client_pubkey = NULL;
-						EVP_PKEY_derive_init(ctx);
-						if(ret != 1){
-							perror("Error during initialization of the context for DH key derivation\n");
-							exit(-1);
-						}
-						EVP_PKEY_derive_set_peer(ctx, client_pubkey);
-						if(ret != 1){
-							perror("Error during derive_set_peer\n");
-							exit(-1);
-						}	
-						unsigned char* session_key;
-						size_t secretlen;
-						EVP_PKEY_derive(ctx, NULL, &secretlen);
-						if(ret != 1){
-							perror("Error during derivation of secret length\n");
-							exit(-1);
-						}
-						session_key = (unsigned char*) malloc (secretlen);
-						EVP_PKEY_derive(ctx, session_key, &secretlen);
-						if(ret != 1){
-							perror("Error during derivation of session key\n");
-							exit(-1);
-						}
-						EVP_PKEY_CTX_free(ctx);
-						EVP_PKEY_free(my_prvkey);
-						EVP_PKEY_free(client_pubkey);
-						EVP_PKEY_free(params);*/
 						
 						/*while(1){
 						
@@ -508,7 +523,8 @@ int main (int argc, const char** argv){
 					//Parent process
 					close(i);	//Closure socket
 					FD_CLR(i, &master);		//Delete the socket from the main set
-					
+					memset(myNonce, 0, DIM_NONCE);
+					memset(username, 0, DIM_USERNAME);
 				}
 			}
 		}

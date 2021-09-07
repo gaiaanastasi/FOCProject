@@ -21,6 +21,9 @@
 #define DIM_BLOCK 128
 #define DIM_AAD 4
 #define DIM_IV 12
+#define DIR_SIZE 6
+#define DIR "keys/"
+
 
 //function that generate a nonce of DIM_NONCE bit
 void generateNonce(unsigned char* nonce){
@@ -28,7 +31,7 @@ void generateNonce(unsigned char* nonce){
 		perror("error occured during RAND_poll()");
 	if(RAND_bytes((unsigned char*)nonce, DIM_NONCE) != 1)
 		perror("error occured during generation of the nonce");
-	printf("the nonce has been generated\n");
+	//printf("the nonce has been generated\n");
 }
 
 
@@ -146,6 +149,7 @@ EVP_PKEY* generateDHParams(){
 	EVP_PKEY_CTX* DHctx;
 	EVP_PKEY* dhPrivateKey;
 	DHparams = EVP_PKEY_new();
+	
 	if(DHparams == NULL){
 		perror("Error during instantiation of DH parameters\n");
 		exit(-1);
@@ -168,6 +172,7 @@ EVP_PKEY* generateDHParams(){
 		perror("Error during initialization of the context for DH key generation\n");
 		exit(-1);
 	}
+	dhPrivateKey = NULL;
 	ret = EVP_PKEY_keygen(DHctx, &dhPrivateKey);
 	if(ret != 1){
 		perror("Error during generation of Diffie-Hellman key\n");
@@ -176,6 +181,31 @@ EVP_PKEY* generateDHParams(){
 	EVP_PKEY_CTX_free(DHctx);
 	EVP_PKEY_free(DHparams);
 	return dhPrivateKey;
+}
+
+EVP_PKEY* getUserPbkey (unsigned char* username){
+	EVP_PKEY* pubkey;
+	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
+	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY+DIR_SIZE));
+	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
+	char fileName[name_size];
+	strncpy(fileName, (char*)DIR, DIR_SIZE );
+	strncat(fileName, (char*)username, DIM_USERNAME );
+	strncat(fileName, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY);
+	FILE* file = fopen(fileName, "r");
+	if(!file){
+		perror("fopen");
+		exit(-1);
+	}
+	
+	//Retrive client's public key
+	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
+	if (!pubkey){
+		perror("Pubkey not found");
+		exit(-1);
+	}
+	fclose(file);
+	return pubkey;
 }
 
 //Function that allocates and returns the serialization of a public key. It returns NULL in case of error
@@ -404,8 +434,9 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	if(!iv || !encrypted_key || !cpt || !pt)
 		return NULL;
 	extract_data_from_array(encrypted_key, message, 0, encrypted_key_len);
-	extract_data_from_array(iv, message, encrypted_key_len, iv_len);
-	extract_data_from_array(cpt, message, encrypted_key_len + iv_len, cpt_len);
+	sumControl(encrypted_key_len, iv_len);
+	extract_data_from_array(iv, message, encrypted_key_len, encrypted_key_len + iv_len);
+	extract_data_from_array(cpt, message, encrypted_key_len + iv_len, messageLen);
 	//decryption
 	ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
