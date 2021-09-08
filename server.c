@@ -21,6 +21,11 @@
 
 #define signalNewMessage 10
 #define signalNewRequest 12
+#define writePipe 1
+#define readPipe 0
+int signalMessageVar;	//variable that is modified only by the new message signal handler. It is equal to 1 if a new message is available
+int signalRequestVar;	//variable that is modified only by the new message request handler. It is equal to 1 if a new request is available
+
 const int MAX_LEN_MESSAGE = 256;
 char* server_port = "4242";
 
@@ -35,12 +40,13 @@ struct userStruct{
 	bool busy;		//true if the user is already talking with someone, false otherwise
 	char username[DIM_USERNAME];	//username of the user
 	int numReq;		//Number of received request that has to be read yet
-	int pid;		//Process id of the process that is managing the connection of the user
+	int messagePipe[2];			//Pipe that contains the messages received by the user
+	int requestPipe[2];			//Pipe that contains the requests to talk received by the user
 	struct intList* cpt_len;	//list of lengths of the ciphertexts that are written in the file
 	pthread_mutex_t userMutex;	//mutex that manage the access to the element of this structure and to the relative file
 };
 
-/*//Function that adds at the end of the list a new integer. Returns false in case of error
+//commento qui//Function that adds at the end of the list a new integer. Returns false in case of error
 bool addIntList(struct intLista** testa, int num){
 	struct intLista* p;
 	if(*testa == NULL){
@@ -87,7 +93,7 @@ int listTotalLen(struct intList* testa){
 	}
 	return sum;
 }
-*/
+//commento qui
 unsigned char myNonce[DIM_NONCE];
 //pthread_mutex_t mutex; //commentato da Matte pthread_mutex_t mutex;
 unsigned char username[DIM_USERNAME];
@@ -96,7 +102,8 @@ unsigned char password[DIM_PASSWORD];
 
 
 //Takes the username and returns its position in the array of users. It returns -1 in case of error
-/*//Mapping from username to unsigned int
+//commento qui
+//Mapping from username to unsigned int
 unsigned int mappingUserToInt(unsigned char* username){
 	if (strcmp((char*)username, "matteo")==0) return 0;
 	if (strcmp((char*)username, "gaia")==0) return 1;
@@ -125,6 +132,7 @@ unsigned char* mappingIntToUser(unsigned int i){
 void initUsers(struct userStruct* users){
 	pthread_mutexattr_t mutexattr;
 	int i;
+	int ret;
 	unsigned char* username;
 	int rc = pthread_mutexattr_init(&mutexattr);
 	if (rc != 0){
@@ -149,35 +157,21 @@ void initUsers(struct userStruct* users){
 		users[i].online = false;
 		users[i].busy = false;
 		users[i].numReq = 0;
+		ret = pipe(users[i].messagePipe);
+		if(ret != 0){
+			perror("Error during creation of the pipe");
+			exit(-1);
+		}
+		ret = pipe(users[i].requestPipe);
+		if(ret != 0){
+			perror("Error during creation of the pipe");
+			exit(-1);
+		}
 	}
 }
 */
-/* commentato da Matte
-//Mark new user as online
-void addUsertoList(unsigned char* username, bool* online_users){
-	//GLock on the shared resource
-	int user = mappingUserToInt(username);
-	if(user == -1){
-		perror("user not found");
-		exit(-1);
-	}
-	int ret = pthread_mutex_lock(&mutex);
-	if(ret != 0){
-		perror("lock");
-		exit(-1);
-	}
-	//Modify the variable 
-	online_users[user] = true;
-	//Unlock the shared resource
-	ret = pthread_mutex_unlock(&mutex);
-	if(ret != 0){
-		perror("lock");
-		exit(-1);
-	}
-	
-	
-}*/
-/*
+
+//commento qui
 //Mark new user as online
 void addUsertoList(unsigned char* username, struct userStruct* users){
 	//GLock on the shared resource
@@ -201,6 +195,7 @@ void addUsertoList(unsigned char* username, struct userStruct* users){
 	}
 }
 
+/*
 //Append a message in a file called messages/<username>_messages.txt if request is false. Append in requests/<username>_requests.txt otherwise
 void forwardMessage(unsigned char* message, int messageLen, unsigned char* username, struct userStruct* users, bool request){
 	int intUser;
@@ -254,8 +249,68 @@ void forwardMessage(unsigned char* message, int messageLen, unsigned char* usern
 		}
 	}
 	pthread_mutex_unlock(&users[intUser].userMutex);
+}*/
+
+//Function that store a buffer in the relavtive pipe of the receiver. It store a message if request is false, a request otherwise
+void forwardMessage(unsigned char* receiver, unsigned char* message, int messageLen, struct userStruct* users, bool request){
+	int intReceiver;
+	intReceiver = mappingUserToInt(receiver);
+	if(intReceiver == -1){
+		perror("Error during mappingUserToInt()");
+		exit(-1);
+	}
+	pthread_mutex_lock(&users[intReceiver].userMutex);
+	if(request){
+		write(users[intReceiver].requestPipe[writePipe], message, messageLen);
+		users[intReceiver].numReq++;
+	} else{
+		write(users[intReceiver].messagePipe[writePipe], message, messageLen);
+		if(!addIntList(users[intReceiver].cpt_len, messageLen)){
+			perror("Error adding an element in a list");
+			exit(-1);
+		}
+	}
+	pthread_mutex_unlock(&users[intReceiver].userMutex);
 }
 
+//Function that reads the first element of a pipe and returns it. It reads a message if request is false, a request otherwise
+unsigned char* readAMessage(unsigned char* receiver, int* messageLen, struct userStruct* users, bool request){
+	int intReceiver;
+	unsigned char* message;
+	intReceiver = mappingUserToInt(receiver);
+	if(intReceiver == -1){
+		perror("Error during mappingUserToInt()");
+		exit(-1);
+	}
+	pthread_mutex_lock(&users[intReceiver].userMutex);
+	if(request){
+		*messageLen = DIM_USERNAME + strlen("request") + 1;
+		message = (unsigned char*) malloc(*messageLen);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		read(users[intReceiver].requestPipe[readPipe], message, *messageLen);
+		users[intReceiver].numReq--;
+	} else{
+		//the size of the first message is in the first element of the list
+		*messageLen = users[intReceiver].cpt_len -> val;
+		message = (unsigned char*) malloc(*messageLen);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		read(users[intReceiver].messagePipe[readPipe], message, *messageLen);
+		if(!removeFirstValueList(users[intReceiver].cpt_len)){
+			perror("Error removing an element from a list");
+			exit(-1);
+		}
+	}
+	pthread_mutex_unlock(&users[intReceiver].userMutex);
+	return message;
+}
+
+/*
 //Read the first message in the file called messages/<username>_messages.txt if request is false. Read the first request in requests/<username>_requests.txt if it is true
 unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct userStruct* users, bool request){
 	int intUser;
@@ -330,7 +385,7 @@ unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct use
 	else{
 		users[intUser].numReq--;
 	}
-	//Now I have to delete from the file the part just read
+	//Now I have to delete from the file the part I've just read
 	fd = fopen(fileName, "wb");
 	if(fd == NULL){
 		perror("Error during fopen()");
@@ -349,7 +404,7 @@ unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct use
 	pthread_mutex_unlock(&users[intUser].userMutex);
 	free(remainingBuf);
 	return message;
-}
+}*/
 
 unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 	unsigned int tot = 0;
@@ -387,16 +442,24 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 }
 
 //Function that manage the sending of a request to talk. It returns true if the request has been accepted, false otherwise
-bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* requesting_username){
+bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* sender, unsigned char* simKey){
 	//COMPLETARE
-	unsigned char* requested_username;
+	unsigned char* receiver;
 	unsigned char* requestString;
+	unsigned char* answer;
 	unsigned char* message;
+	unsigned char* buffer;
+	int bufferLen;
 	int messageLen;
-	int intUser;
-	fd_set set;
-	FILE* fd;
+	int intReceiver;
+	int intSender;
+	int answerLen;
+	int ret;
 	char fileName[64];
+	fd_set set;
+	intSender = mappingUserToInt(sender);
+	pthread_mutex_lock(&users[intSender].userMutex);
+	users[intSender].busy = true;
 	if(recv_len != (DIM_USERNAME + strlen("request") + 1)){
 		message = malloc(strlen("wrong_format") + 1);
 		if(!message){
@@ -404,8 +467,12 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 			exit(-1);
 		}
 		strcpy(message, "wrong_format");
-		send_obj(sock, message, strlen(message) + 1);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		send_obj(sock, buffer, bufferLen);
 		free(message);
+		free(buffer);
+		users[intSender].busy = false;
+		pthread_mutex_unlock(&users[intSender].userMutex);
 		return false;
 	}
 	requestString = (unsigned char*) malloc(strlen("request") + 1);
@@ -421,82 +488,159 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 			exit(-1);
 		}
 		strcpy(message, "wrong_format");
-		send_obj(sock, message, strlen(message) + 1);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		send_obj(sock, buffer, bufferLen);
 		free(message);
+		free(buffer);
+		users[intSender].busy = false;
+		pthread_mutex_unlock(&users[intSender].userMutex);
 		return false;
 	}
-	requested_username = (unsigned char*) malloc(DIM_USERNAME);
-	if(!requested_username){
+	free(requestString);
+	receiver = (unsigned char*) malloc(DIM_USERNAME);
+	if(!receiver){
 		perror("Error during malloc()");
 		exit(-1);
 	}
-	extract_data_from_array(requested_username, recv_message, 0, DIM_USERNAME);
-	intUser = mappingUserToInt(requested_username);
+	extract_data_from_array(receiver, recv_message, 0, DIM_USERNAME);
+	intReceiver = mappingUserToInt(receiver);
 	//Control if the username exists and if the relative user is online and not busy
-	if(intUser < 0){
+	if(intReceiver < 0){
 		message = malloc(strlen("wrong_format") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
 		strcpy(message, "wrong_format");
-		send_obj(sock, message, strlen(message) + 1);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		send_obj(sock, buffer, bufferLen);
 		free(message);
+		free(buffer);
+		users[intSender].busy = false;
+		pthread_mutex_unlock(&users[intSender].userMutex);
 		return false;
 	}
-	if(users[intUser].online == false){
+	pthread_mutex_lock(&users[intReceiver].userMutex);
+	if(users[intReceiver].online == false){
 		message = malloc(strlen("not_online") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
 		strcpy(message, "not_online");
-		send_obj(sock, message, strlen(message) + 1);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		send_obj(sock, buffer, bufferLen);
 		free(message);
+		free(buffer);
+		users[intSender].busy = false;
+		pthread_mutex_unlock(&users[intSender].userMutex);
 		return false;
 	}
-	if(users[intUser].busy == true){
+	if(users[intReceiver].busy == true){
 		message = malloc(strlen("busy") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
 		strcpy(message, "busy");
-		send_obj(sock, message, strlen(message) + 1);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		send_obj(sock, buffer, bufferLen);
 		free(message);
+		free(buffer);
+		users[intSender].busy = false;
+		pthread_mutex_unlock(&users[intSender].userMutex);
 		return false;
 	}
-	//Creation of the message to be sent to the other user
+	pthread_mutex_unlock(&users[intReceiver].userMutex);
+	//Creation of the request to be sent to the other user
 	messageLen = DIM_USERNAME + strlen("request") + 1;
 	message = (unsigned char*) malloc(messageLen);
 	if(!message){
 		perror("Error during malloc()");
 		exit(-1);
 	}
-	memcpy(message, requesting_username, DIM_USERNAME);
+	memcpy(message, sender, DIM_USERNAME);
 	concatElements(message, "request", DIM_USERNAME, strlen("request") + 1);
-	forwardMessage(message, messageLen, requested_username, users, true);
-	//I have to wait until the other client sends the answer
-	strcpy(fileName, "requests/");
-	strcat(fileName, requesting_username);
-	strcat(fileName, "_requests.txt");
-	//ARRIVATOQUI
+	pthread_mutex_unlock(&users[intSender].userMutex);
+	forwardMessage(receiver, message, messageLen, users, true);
+	free(message);
+	free(receiver);
+	FD_ZERO(&set);
+	FD_SET(users[intSender].messagePipe[readPipe], &set);
+	//waiting for the answer
+	ret = select(users[intSender].messagePipe[readPipe] + 1, &set, NULL, NULL, NULL);
+	if(ret < 0){
+		perror("Error during select()");
+		exit(-1);
+	}
+	if(FD_ISSET(users[intSender].messagePipe[readPipe]), &set){
+		//the answer is arrived
+		answer = readAMessage(sender, &answerLen, users, false);
+		if(strcmp(answer, "y") == 0){
+			//request accepted
+			free(answer);
+			return true;
+		} else {
+			//request refused
+			free(answer);
+			return false;
+		}
+	}
 }
 
-void newMessageHandler(int n){
-	//per farlo devo metterle globali
-	unsigned char* message = takeAMessage();
-	send_obj(sock, message, messageLen);
-}
-
-void newRequestHandler(int n){
-	
+//Function that manages the receiving of a request. Returns true if the request has been accepted, false otherwise
+bool handle_recv_request(int sock, struct userStruct* users, unsigned char* receiver, unsigned char* simKey){
+	int intReceiver;
+	unsigned char* message;
+	unsigned char* buffer;
+	unsigned char* answer;
+	unsigned char* sender;
+	int bufferLen;
+	int messageLen;
+	message = readAMessage(receiver, &messageLen, users, true);
+	sender = (unsigned char*) malloc(DIM_USERNAME);
+	if(!sender){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	extract_data_from_array(sender, message, 0, DIM_USERNAME);
+	buffer = symmetricEncryption(message, messageLen, simKey, &bufferLen);
+	if(buffer == NULL){
+		perror("Error during symmetric encryption");
+		exit(-1);
+	}
+	send_obj(sock, buffer, bufferLen);
+	free(buffer);
+	free(message);
+	bufferLen = receive_len(sock);
+	buffer = (unsigned char*) malloc(bufferLen);
+	if(!buffer){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	receive_obj(sock, buffer, bufferLen);
+	message = symmetricDecription(buffer, bufferLen, &messageLen, simKey);
+	answer = (unsigned char*) malloc(2);
+	if(!answer){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	extract_data_from_array(answer, message, 0, 2);
+	forwardMessage(sender, answer, strlen(answer) + 1, users, false);
+	if(strcmp(answer, "y") == 0){
+		free(answer);
+		return true;
+	}
+	else{
+		free(answer);
+		return false;
+	}
 }
 
 void handle_logout(int sock){
 	//COMPLETARE
 }
-*/
+//commento qui
 X509* getServerCertificate (){
 	///GET THE CERTIFICATE FROM PEM FILE
 	X509* cert;
@@ -753,6 +897,7 @@ int main (int argc, const char** argv){
 		perror("Error during defining the signal");
 		exit(-1);
 	}
+	signalMessageVar = signalRequestVar = 0;
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
