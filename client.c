@@ -15,8 +15,8 @@
 
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
-const char commandMessage[256] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
-
+const int MAX_LEN_MESSAGE = 256;
+const char commandMessage[MAX_LEN_MESSAGE] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
 
 
 //Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
@@ -130,13 +130,13 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		}
 		if(FD_ISSET(0, &readSet)){
 			//the user has typed something
-			pt_len = 256;
+			pt_len = MAX_LEN_MESSAGE;
 			plaintext = (unsigned char*) malloc(pt_len);
 			if(plaintext == NULL){
 				perror("Error during malloc()");
 				exit(-1);
 			}
-			if(fgets(plaintext, 256, stdin) == NULL){
+			if(fgets(plaintext, MAX_LEN_MESSAGE, stdin) == NULL){
 				perror("Error during the input of the message");
 				exit(-1);
 			}
@@ -213,7 +213,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				perror("Error during the decription of the message");
 				exit(-1);
 			}
-			if(pt_len > 256){
+			if(pt_len > MAX_LEN_MESSAGE){
 				perror("The received message is too long");
 				exit(-1);
 			}

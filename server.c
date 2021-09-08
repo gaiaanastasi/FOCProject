@@ -19,7 +19,7 @@
 #include <stdbool.h>
 
 
-
+const int MAX_LEN_MESSAGE = 256;
 char* server_port = "4242";
 
 //list of integer
@@ -309,9 +309,10 @@ unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 	return tot;
 }
 
-void getOnlineUser (int sock, bool* users){
+void getOnlineUser (int sock, struct userStruct* users){
 	//Get the total number of active user
 	unsigned int tot = getNumberOfOnlineUsers(users);
+	unsigned char message[256];
 	if (tot == 0) {
 		perror("error in getNumberOfOnlineUsers");
 		exit(-1);
