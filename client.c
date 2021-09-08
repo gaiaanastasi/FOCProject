@@ -571,14 +571,14 @@ int main(int argc, const char** argv){
 	dimOpBuffer = 0;
 
 	//deserialization of the server DH public key
-	subControlInt(pt_len, DIM_NONCE);
-	dimOpBuffer = pt_len - DIM_NONCE;
+	subControlInt(pt_len, DIM_NONCE+DIM_NONCE);
+	dimOpBuffer = pt_len - (DIM_NONCE+DIM_NONCE);
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
 	if(opBuffer == NULL){
 		perror("Error during malloc()");
 		exit(-1);
 	}
-	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
+	extract_data_from_array(opBuffer, plaintext, DIM_NONCE+DIM_NONCE, pt_len);
 	DHServerPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(DHServerPubK == NULL){
 		perror("Error during deserialization of the DH public key\n");
