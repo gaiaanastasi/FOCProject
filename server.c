@@ -40,7 +40,7 @@ struct userStruct{
 	pthread_mutex_t userMutex;	//mutex that manage the access to the element of this structure and to the relative file
 };
 
-//Function that adds at the end of the list a new integer. Returns false in case of error
+/*//Function that adds at the end of the list a new integer. Returns false in case of error
 bool addIntList(struct intLista** testa, int num){
 	struct intLista* p;
 	if(*testa == NULL){
@@ -87,7 +87,7 @@ int listTotalLen(struct intList* testa){
 	}
 	return sum;
 }
-
+*/
 unsigned char myNonce[DIM_NONCE];
 //pthread_mutex_t mutex; //commentato da Matte pthread_mutex_t mutex;
 unsigned char username[DIM_USERNAME];
@@ -96,6 +96,7 @@ unsigned char password[DIM_PASSWORD];
 
 
 //Takes the username and returns its position in the array of users. It returns -1 in case of error
+/*//Mapping from username to unsigned int
 unsigned int mappingUserToInt(unsigned char* username){
 	if (strcmp((char*)username, "matteo")==0) return 0;
 	if (strcmp((char*)username, "gaia")==0) return 1;
@@ -150,7 +151,7 @@ void initUsers(struct userStruct* users){
 		users[i].numReq = 0;
 	}
 }
-
+*/
 /* commentato da Matte
 //Mark new user as online
 void addUsertoList(unsigned char* username, bool* online_users){
@@ -176,7 +177,7 @@ void addUsertoList(unsigned char* username, bool* online_users){
 	
 	
 }*/
-
+/*
 //Mark new user as online
 void addUsertoList(unsigned char* username, struct userStruct* users){
 	//GLock on the shared resource
@@ -495,7 +496,7 @@ void newRequestHandler(int n){
 void handle_logout(int sock){
 	//COMPLETARE
 }
-
+*/
 X509* getServerCertificate (){
 	///GET THE CERTIFICATE FROM PEM FILE
 	X509* cert;
@@ -715,10 +716,10 @@ void establishDHExhange(int sock){
 	dimOpBuffer = 0;
 
 	//Deserialization of the client's DH public key
-	subControlInt(pt_len, DIM_NONCE);
-	dimOpBuffer = pt_len - DIM_NONCE;
+	subControlInt(pt_len, DIM_NONCE+DIM_NONCE);
+	dimOpBuffer = pt_len - (DIM_NONCE+DIM_NONCE);
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
-	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, pt_len);
+	extract_data_from_array(opBuffer, plaintext, DIM_NONCE+DIM_NONCE, pt_len);
 	DHClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(DHClientPubK == NULL){
 		perror("Error during deserialization of the DH public key\n");
