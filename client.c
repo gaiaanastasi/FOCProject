@@ -601,7 +601,8 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	printf("Hi! This is a secure messaging system\n");
-/*	while(continueWhile){
+/*
+	while(continueWhile){
 		printf("%s", commandMessage);
 		FD_ZERO(&readFdSet);		//cleaning the set
 		FD_SET(0, &readFdSet);		//stdin added to the set
@@ -664,6 +665,7 @@ int main(int argc, const char** argv){
 						exit(-1);
 					}
 					concat2Elements(plaintext, opBuffer, "request", DIM_USERNAME, strlen("request") + 1);
+					//message to be sent has the format { <requested_username> | "request" }
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
 					if(message_send == NULL){
 						perror("Error during the encryption of the message");
@@ -691,6 +693,30 @@ int main(int argc, const char** argv){
 					}
 					if(strcmp(plaintext, "refused") == 0){
 						printf("Your request to talk with %s has been refused\n", opBuffer);
+						free(opBuffer);
+						free(plaintext);
+						free(message_recv);
+						dimOpBuffer = 0;
+						break;
+					}
+					else if(strcmp(plaintext, "wrong_format") == 0){
+						printf("Your request to talk with %s has not been sent because you have typed a username that does not exist\n", opBuffer);
+						free(opBuffer);
+						free(plaintext);
+						free(message_recv);
+						dimOpBuffer = 0;
+						break;
+					}
+					else if(strcmp(plaintext, "busy") == 0){
+						printf("%s is already busy in another conversation, keep trying later\n", opBuffer);
+						free(opBuffer);
+						free(plaintext);
+						free(message_recv);
+						dimOpBuffer = 0;
+						break;
+					}
+					else if(strcmp(plaintext, "not_online") == 0){
+						printf("%s is not online\n", opBuffer);
 						free(opBuffer);
 						free(plaintext);
 						free(message_recv);

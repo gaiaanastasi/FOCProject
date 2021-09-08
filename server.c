@@ -17,8 +17,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <signal.h>
 
-
+#define signalNewMessage 10
+#define signalNewRequest 12
 const int MAX_LEN_MESSAGE = 256;
 char* server_port = "4242";
 
@@ -30,7 +32,10 @@ struct intList{
 
 struct userStruct{
 	bool online;	//true if the user is online, false otherwise
+	bool busy;		//true if the user is already talking with someone, false otherwise
 	char username[DIM_USERNAME];	//username of the user
+	int numReq;		//Number of received request that has to be read yet
+	int pid;		//Process id of the process that is managing the connection of the user
 	struct intList* cpt_len;	//list of lengths of the ciphertexts that are written in the file
 	pthread_mutex_t userMutex;	//mutex that manage the access to the element of this structure and to the relative file
 };
@@ -90,7 +95,7 @@ unsigned char clientNonce[DIM_NONCE];
 unsigned char password[DIM_PASSWORD];
 
 
-//Mapping from username to unsigned int
+//Takes the username and returns its position in the array of users. It returns -1 in case of error
 unsigned int mappingUserToInt(unsigned char* username){
 	if (strcmp((char*)username, "matteo")==0) return 0;
 	if (strcmp((char*)username, "gaia")==0) return 1;
@@ -115,6 +120,7 @@ unsigned char* mappingIntToUser(unsigned int i){
 
 }
 
+//Initialize the user structure
 void initUsers(struct userStruct* users){
 	pthread_mutexattr_t mutexattr;
 	int i;
@@ -139,6 +145,9 @@ void initUsers(struct userStruct* users){
 		username = mappingIntToUser(i);
 		strcpy(users[i].username, username);
 		free(username);
+		users[i].online = false;
+		users[i].busy = false;
+		users[i].numReq = 0;
 	}
 }
 
@@ -191,15 +200,22 @@ void addUsertoList(unsigned char* username, struct userStruct* users){
 	}
 }
 
-//Write the message in a file called messages/<username>_messages.txt
-void forwardMessage(unsigned char* message, int messageLen, unsigned char* username, struct userStruct* users){
+//Append a message in a file called messages/<username>_messages.txt if request is false. Append in requests/<username>_requests.txt otherwise
+void forwardMessage(unsigned char* message, int messageLen, unsigned char* username, struct userStruct* users, bool request){
 	int intUser;
 	FILE* fd;
 	char fileName[64];
 	int ret;
-	strcpy(fileName, "messages/");
-	strcat(fileName, username);
-	strcat(fileName, "_messages.txt");
+	if(!request){
+		strcpy(fileName, "messages/");
+		strcat(fileName, username);
+		strcat(fileName, "_messages.txt");
+	}
+	else{
+		strcpy(fileName, "requests/");
+		strcat(fileName, username);
+		strcat(fileName, "_requests.txt");
+	}
 	intUser = mappingUserToInt(username);
 	pthread_mutex_lock(&users[intUser].userMutex);
 	fd = fopen(fileName, "ab");
@@ -217,15 +233,30 @@ void forwardMessage(unsigned char* message, int messageLen, unsigned char* usern
 		perror("Error during fclose()");
 		exit(-1);
 	}
-	if(!addIntList(&(users[intUser].cpt_len), messageLen)){
-		perror("Error during add into the list");
-		exit(-1);
-	};
+	if(!request){
+		if(!addIntList(&(users[intUser].cpt_len), messageLen)){
+			perror("Error during add into the list");
+			exit(-1);
+		}
+		ret = kill(users[intUser].pid, signalNewMessage);
+		if(ret != 0){
+			perror("Error sending the signal");
+			exit(-1);
+		}
+	}
+	else{
+		users[intUser].numReq++;
+		ret = kill(users[intUser].pid, signalNewRequest);
+		if(ret != 0){
+			perror("Error sending the signal");
+			exit(-1);
+		}
+	}
 	pthread_mutex_unlock(&users[intUser].userMutex);
 }
 
-//Read the first message in the file called messages/<username>_messages.txt
-unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct userStruct* users){
+//Read the first message in the file called messages/<username>_messages.txt if request is false. Read the first request in requests/<username>_requests.txt if it is true
+unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct userStruct* users, bool request){
 	int intUser;
 	unsigned char* message;
 	unsigned char* remainingBuf;
@@ -233,17 +264,30 @@ unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct use
 	char fileName[64];
 	int ret;
 	int remainingLen;	//length of the remaining part of the content of the file
-	strcpy(fileName, "messages/");
-	strcat(fileName, username);
-	strcat(fileName, "_messages.txt");
+	if(!request){
+		strcpy(fileName, "messages/");
+		strcat(fileName, username);
+		strcat(fileName, "_messages.txt");
+	}
+	else{
+		strcpy(fileName, "requests/");
+		strcat(fileName, username);
+		strcat(fileName, "_requests.txt");
+	}
 	intUser = mappingUserToInt(username);
 	if(users[intUser].cpt_len == NULL){
 		perror("The list is empty");
 		exit(-1);
 	}
 	//the size of the first message is in the first element of the list
-	*messageLen = users[intUser].cpt_len -> val;
-	remainingLen = listTotalLen(users[intUser].cpt_len) - *messageLen;
+	if(!request){
+		*messageLen = users[intUser].cpt_len -> val;
+		remainingLen = listTotalLen(users[intUser].cpt_len) - *messageLen;
+	}
+	else{
+		*messageLen = DIM_USERNAME + strlen("request") + 1;
+		remainigLen = (users[intUser].numReq - 1) * (*messageLen);	//controllo overflow!!!
+	}
 	message = (unsigned char*) malloc(*messageLen);
 	remainingBuf = (unsigned char*) malloc(remainingLen);
 	if(!message || !remainingBuf){
@@ -276,9 +320,14 @@ unsigned char* takeAMessage(int* messageLen, unsigned char* username, struct use
 		perror("Error during fclose()");
 		exit(-1);
 	}
-	if(!removeFirstValueList(&users[intUser].cpt_len)){
-		perror("Error removing an element from the list");
-		exit(-1);
+	if(!request){
+		if(!removeFirstValueList(&users[intUser].cpt_len)){
+			perror("Error removing an element from the list");
+			exit(-1);
+		}
+	}
+	else{
+		users[intUser].numReq--;
 	}
 	//Now I have to delete from the file the part just read
 	fd = fopen(fileName, "wb");
@@ -309,38 +358,138 @@ unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 	return tot;
 }
 
-void getOnlineUser (int sock, struct userStruct* users){
+//Function that send a formatted string containing the message that reports the currently online users
+void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsername){
 	//Get the total number of active user
-	unsigned int tot = getNumberOfOnlineUsers(users);
-	unsigned char message[256];
+	//unsigned int tot = getNumberOfOnlineUsers(users);
+	unsigned char message[MAX_LEN_MESSAGE];
+	char heading[6];	//the heading can contain an index composed by 3 digits
+	int i = 0;
+	int intUser = mappingUserToInt(myUsername);
 	if (tot == 0) {
-		perror("error in getNumberOfOnlineUsers");
+		perror("Error during getNumberOfOnlineUsers()");
 		exit(-1);
 	}
-	
-	unsigned char* online[tot];
-	int last = 0;
-	
-	for (unsigned int i=0; i<TOT_USERS; i++){
-		//Get the username of each online user
-		unsigned char* mapping = mappingIntToUser(i);
-		if(users) {
-			//Store it in an array
-			online[last] = mapping;
-			last++;
+	strcpy(message, "\nThe currently online users are:\n");
+	for(i = 0; i < TOT_USERS; i++){
+		pthread_mutex_lock(&users[i].userMutex);
+		if(users[i].online && i != intUser && (strlen(message) + strlen(users[i].username) + 7) < MAX_LEN_MESSAGE){	//message must be able to contain the length of the username + the heading + '\n'
+			sprintf(heading, "%d) ", i);
+			strcat(message, heading);
+			strcat(message, users[i].username);
+			strcat(message, "\n");
 		}
-		#pragma optimize("", off)
-	   	memset(mapping, 0, strlen((char*)mapping)+1);
-		#pragma optimize("", on)
-	   	free(mapping);
-			
+		pthread_mutex_unlock(&users[i].userMutex);
 	}
+	send_obj(sock, message, strlen(message) + 1);
 	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE	
 }
 
-
-void handle_send_request(int sock){
+//Function that manage the sending of a request to talk. It returns true if the request has been accepted, false otherwise
+bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* requesting_username){
 	//COMPLETARE
+	unsigned char* requested_username;
+	unsigned char* requestString;
+	unsigned char* message;
+	int messageLen;
+	int intUser;
+	fd_set set;
+	FILE* fd;
+	char fileName[64];
+	if(recv_len != (DIM_USERNAME + strlen("request") + 1)){
+		message = malloc(strlen("wrong_format") + 1);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		strcpy(message, "wrong_format");
+		send_obj(sock, message, strlen(message) + 1);
+		free(message);
+		return false;
+	}
+	requestString = (unsigned char*) malloc(strlen("request") + 1);
+	if(!requestString){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	extract_data_from_array(requestString, recv_message, DIM_USERNAME, recv_len);
+	if(strcmp(requestString, "request") != 0){
+		message = malloc(strlen("wrong_format") + 1);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		strcpy(message, "wrong_format");
+		send_obj(sock, message, strlen(message) + 1);
+		free(message);
+		return false;
+	}
+	requested_username = (unsigned char*) malloc(DIM_USERNAME);
+	if(!requested_username){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	extract_data_from_array(requested_username, recv_message, 0, DIM_USERNAME);
+	intUser = mappingUserToInt(requested_username);
+	//Control if the username exists and if the relative user is online and not busy
+	if(intUser < 0){
+		message = malloc(strlen("wrong_format") + 1);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		strcpy(message, "wrong_format");
+		send_obj(sock, message, strlen(message) + 1);
+		free(message);
+		return false;
+	}
+	if(users[intUser].online == false){
+		message = malloc(strlen("not_online") + 1);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		strcpy(message, "not_online");
+		send_obj(sock, message, strlen(message) + 1);
+		free(message);
+		return false;
+	}
+	if(users[intUser].busy == true){
+		message = malloc(strlen("busy") + 1);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		strcpy(message, "busy");
+		send_obj(sock, message, strlen(message) + 1);
+		free(message);
+		return false;
+	}
+	//Creation of the message to be sent to the other user
+	messageLen = DIM_USERNAME + strlen("request") + 1;
+	message = (unsigned char*) malloc(messageLen);
+	if(!message){
+		perror("Error during malloc()");
+		exit(-1);
+	}
+	memcpy(message, requesting_username, DIM_USERNAME);
+	concatElements(message, "request", DIM_USERNAME, strlen("request") + 1);
+	forwardMessage(message, messageLen, requested_username, users, true);
+	//I have to wait until the other client sends the answer
+	strcpy(fileName, "requests/");
+	strcat(fileName, requesting_username);
+	strcat(fileName, "_requests.txt");
+	//ARRIVATOQUI
+}
+
+void newMessageHandler(int n){
+	//per farlo devo metterle globali
+	unsigned char* message = takeAMessage();
+	send_obj(sock, message, messageLen);
+}
+
+void newRequestHandler(int n){
+	
 }
 
 void handle_logout(int sock){
@@ -591,6 +740,18 @@ void establishDHExhange(int sock){
 }
 
 int main (int argc, const char** argv){
+	sighandler_t s;
+	//Defining the handler that will manage the signal sent by a process to another one to notify the arrive of a new message
+	s = signal(signalNewMessage, newMessageHandler);
+	if(s == SIG_ERR){
+		perror("Error during defining the signal");
+		exit(-1);
+	}
+	s = signal(signalNewRequest, newRequestHandler);
+	if(s == SIG_ERR){
+		perror("Error during defining the signal");
+		exit(-1);
+	}
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
