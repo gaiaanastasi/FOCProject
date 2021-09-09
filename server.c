@@ -411,10 +411,12 @@ unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 }
 
 //Function that send a formatted string containing the message that reports the currently online users
-void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsername){
+void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsername, unsigned char* simKey){
 	//Get the total number of active user
 	//unsigned int tot = getNumberOfOnlineUsers(users);
 	unsigned char message[MAX_LEN_MESSAGE];
+	unsigned char* sendMessage;
+	int send_len;
 	char heading[6];	//the heading can contain an index composed by 3 digits
 	int i = 0;
 	int intUser = mappingUserToInt(myUsername);
@@ -433,7 +435,8 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 		}
 		pthread_mutex_unlock(&users[i].userMutex);
 	}
-	send_obj(sock, message, strlen(message) + 1);
+	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
+	send_obj(sock, sendMessage, send_len);
 	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE	
 }
 
@@ -1095,7 +1098,7 @@ int main (int argc, const char** argv){
 					receive_obj(socket_com, recv_message, recv_len);
 					plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
 					if(strcmp(plaintext, "online_people") == 0)
-						getOnlineUser(socket_com, users, myUser);
+						getOnlineUser(socket_com, users, myUser, simKey);
 					else if(strcmp(plaintext, "logout") == 0){
 						waitingMessage = waitingRequest = false;
 						break;
@@ -1114,6 +1117,7 @@ int main (int argc, const char** argv){
 				}
 			}
 			while(waitingMessage){
+				//The user has accepted a request to talk, communications can arrive from other processes (messages) or from the connected client
 				FD_ZERO(&recv_set);
 				FD_SET(socket_com, &recv_set);
 				FD_SET(users[intMyUser].messagePipe[readPipe], &recv_set);
@@ -1125,6 +1129,9 @@ int main (int argc, const char** argv){
 				if(ret < 0){
 					perror("Error during select()");
 					exit(-1);
+				}
+				if(FD_ISSET(socket_com, &recv_set)){
+
 				}
 			}
 			close(socket_com);
