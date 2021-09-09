@@ -437,11 +437,12 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 	}
 	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
 	send_obj(sock, sendMessage, send_len);
+	free(sendMessage);
 	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE	
 }
 
-//Function that manage the sending of a request to talk. It returns true if the request has been accepted, false otherwise
-bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* sender, unsigned char* simKey){
+//Function that manage the sending of a request to talk. It returns the username of the requested user if request is accepted, NULL otherwise
+int handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* sender, unsigned char* simKey){
 	//COMPLETARE
 	unsigned char* receiver;
 	unsigned char* requestString;
@@ -472,7 +473,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
-		return false;
+		return NULL;
 	}
 	requestString = (unsigned char*) malloc(strlen("request") + 1);
 	if(!requestString){
@@ -493,7 +494,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
-		return false;
+		return NULL;
 	}
 	free(requestString);
 	receiver = (unsigned char*) malloc(DIM_USERNAME);
@@ -517,7 +518,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
-		return false;
+		return NULL;
 	}
 	pthread_mutex_lock(&users[intReceiver].userMutex);
 	if(users[intReceiver].online == false){
@@ -534,7 +535,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
 		pthread_mutex_unlock(&users[intReceiver].userMutex);
-		return false;
+		return NULL;
 	}
 	if(users[intReceiver].busy == true){
 		message = malloc(strlen("busy") + 1);
@@ -550,7 +551,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
 		pthread_mutex_unlock(&users[intReceiver].userMutex);
-		return false;
+		return NULL;
 	}
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 	pthread_mutex_unlock(&users[intSender].userMutex);
@@ -565,7 +566,6 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 	concatElements(message, "request", DIM_USERNAME, strlen("request") + 1);
 	forwardMessage(receiver, message, messageLen, users, true);
 	free(message);
-	free(receiver);
 	FD_ZERO(&set);
 	FD_SET(users[intSender].messagePipe[readPipe], &set);
 	//waiting for the answer
@@ -580,22 +580,23 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		if(strcmp(answer, "y") == 0){
 			//request accepted
 			free(answer);
-			return true;
+			return receiver;
 		} else {
 			//request refused
 			free(answer);
-			return false;
+			return NULL;
 		}
 	}
 }
 
-//Function that manages the receiving of a request. Returns true if the request has been accepted, false otherwise
-bool handle_recv_request(int sock, struct userStruct* users, unsigned char* receiver, unsigned char* simKey){
+//Function that manages the receiving of a request. It returns username of the requesting user if request is accepted, NULL otherwise
+unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned char* receiver, unsigned char* simKey){
 	int intReceiver;
 	unsigned char* message;
 	unsigned char* buffer;
 	unsigned char* answer;
 	unsigned char* sender;
+	int intSender;
 	int bufferLen;
 	int messageLen;
 	message = readAMessage(receiver, &messageLen, users, true);
@@ -605,11 +606,13 @@ bool handle_recv_request(int sock, struct userStruct* users, unsigned char* rece
 		exit(-1);
 	}
 	extract_data_from_array(sender, message, 0, DIM_USERNAME);
+	intSender = mappingUserToInt(sender);
 	buffer = symmetricEncryption(message, messageLen, simKey, &bufferLen);
 	if(buffer == NULL){
 		perror("Error during symmetric encryption");
 		exit(-1);
 	}
+	//sending of the request to the client
 	send_obj(sock, buffer, bufferLen);
 	free(buffer);
 	free(message);
@@ -619,6 +622,7 @@ bool handle_recv_request(int sock, struct userStruct* users, unsigned char* rece
 		perror("Error during malloc()");
 		exit(-1);
 	}
+	//receiving the answer
 	receive_obj(sock, buffer, bufferLen);
 	message = symmetricDecription(buffer, bufferLen, &messageLen, simKey);
 	answer = (unsigned char*) malloc(2);
@@ -627,14 +631,79 @@ bool handle_recv_request(int sock, struct userStruct* users, unsigned char* rece
 		exit(-1);
 	}
 	extract_data_from_array(answer, message, 0, 2);
+	free(message);
 	forwardMessage(sender, answer, strlen(answer) + 1, users, false);
 	if(strcmp(answer, "y") == 0){
 		free(answer);
-		return true;
+		return sender;
 	}
 	else{
 		free(answer);
-		return false;
+		return NULL;
+	}
+}
+
+//Function that handles the forwarding of messages from a client to another one. It returns true if the connected username wanted to exit, false otherwise
+bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned char* myUser, unsigned char* simKey, unsigned char* communicatingClient){
+	fd_set recv_set;
+	int greatest, ret;
+	unsigned char* message;
+	int messageLen;
+	unsigned char* plaintext;
+	int pt_len;
+	int intMyUser = mappingUserToInt(myUser);
+	if(intMyUser < 0){
+		perror("Error during mappingUserToInt()");
+		exit(-1);
+	}
+	while(1){
+		//communications can arrive from other processes (messages) or from the connected client
+		FD_ZERO(&recv_set);
+		FD_SET(socket_com, &recv_set);
+		FD_SET(users[intMyUser].messagePipe[readPipe], &recv_set);
+		if(socket_com > users[intMyUser].messagePipe[readPipe])
+			greatest = socket_com;
+		else
+			greatest = users[intMyUser].messagePipe[readPipe];
+		ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
+		if(ret < 0){
+			perror("Error during select()");
+			exit(-1);
+		}
+		if(FD_ISSET(socket_com, &recv_set)){
+			//A new message sent from the connected client is arrived
+			messageLen = receive_len(socket_com);
+			message = (unsigned char*) malloc(messageLen);
+			if(!message){
+				perror("Error during malloc()");
+				exit(-1);
+			}
+			receive_obj(socket_com, message, messageLen);
+			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
+			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
+			if(strcmp(plaintext, "<exit>") == 0){
+				printf("The client wants to exit\n");
+				free(message);
+				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+				free(plaintext);
+				return true;
+			}
+			free(plaintext);
+			forwardMessage(communicatingClient, message, messageLen, users, false);
+			free(message);
+		}
+		else if(FD_ISSET(users[intMyUser].messagePipe[readPipe], &recv_set)){
+			//A new message destinated to the connected client is arrived
+			message = readAMessage(myUser, &messageLen, users, false);
+			//I have to control if the message is "<exit>". If it is so, it means that the other client has already communicated to the connected client
+			//that he wants to exit and now it is communicating the same thing to the server
+			if(strcmp(message, "<exit>") == 0){
+				free(message);
+				return false;
+			}
+			//If it is not "<exit>" I have to forward it to the connected client
+			send_obj(socket_com, message, messageLen);
+		}
 	}
 }
 
@@ -1058,6 +1127,7 @@ int main (int argc, const char** argv){
 	int recv_len;
 	unsigned char* plaintext;
 	int pt_len;
+	unsigned char* communicatingClient = NULL;	//username of the client with wich the connected client is talking to
 	while(1){
 		socket_com = accept(socket_ascolto, (struct sockaddr*)&indirizzo_client, &size );
 		pid = fork();
@@ -1073,67 +1143,68 @@ int main (int argc, const char** argv){
 				perror("Error during mappingUserToInt()");
 				exit(-1);
 			}
-			while(waitingRequest){
-			//Communications can arrive from other processes (requests) or from the connected client
-				FD_ZERO(&recv_set);
-				FD_SET(socket_com, &recv_set);
-				FD_SET(users[intMyUser].requestPipe[readPipe], &recv_set);
-				if(socket_com > users[intMyUser].requestPipe[readPipe])
-					greatest = socket_com;
-				else
-					greatest = users[intMyUser].requestPipe[readPipe];
-				ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
-				if(ret < 0){
-					perror("Error during select()");
-					exit(-1);
-				}
-				if(FD_ISSET(socket_com, &recv_set)){
-					//A new message from the client is arrived
-					recv_len = receive_len(socket_com);
-					recv_message = (unsigned char*) malloc(recv_len);
-					if(!recv_message){
-						perror("Error during malloc()");
+			while(waitingRequest || waitingMessage){
+				while(waitingRequest){
+				//Communications can arrive from other processes (requests) or from the connected client
+					FD_ZERO(&recv_set);
+					FD_SET(socket_com, &recv_set);
+					FD_SET(users[intMyUser].requestPipe[readPipe], &recv_set);
+					if(socket_com > users[intMyUser].requestPipe[readPipe])
+						greatest = socket_com;
+					else
+						greatest = users[intMyUser].requestPipe[readPipe];
+					ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
+					if(ret < 0){
+						perror("Error during select()");
 						exit(-1);
 					}
-					receive_obj(socket_com, recv_message, recv_len);
-					plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
-					if(strcmp(plaintext, "online_people") == 0)
-						getOnlineUser(socket_com, users, myUser, simKey);
-					else if(strcmp(plaintext, "logout") == 0){
+					if(FD_ISSET(socket_com, &recv_set)){
+						//A new message from the client is arrived
+						recv_len = receive_len(socket_com);
+						recv_message = (unsigned char*) malloc(recv_len);
+						if(!recv_message){
+							perror("Error during malloc()");
+							exit(-1);
+						}
+						receive_obj(socket_com, recv_message, recv_len);
+						plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
+						if(strcmp(plaintext, "online_people") == 0)
+							getOnlineUser(socket_com, users, myUser, simKey);
+						else if(strcmp(plaintext, "logout") == 0){
+							waitingMessage = waitingRequest = false;
+							break;
+						}
+						else{
+							communicatingClient = handle_send_request(socket_com, plaintext, pt_len, users, myUser, simKey);
+							if(communicatingClient != NULL){
+								waitingMessage = true;
+								waitingRequest = false;
+							}
+						}
+						free(plaintext);
+						free(recv_message);
+					}
+					else if(FD_ISSET(users[intMyUser].requestPipe[readPipe], &recv_set)){
+						//A new request is arrived
+						communicatingClient = handle_recv_request(socket_com, users, myUser, simKey);
+						if(communicatingClient != NULL){
+							waitingMessage = true;
+							waitingRequest = false;
+						}
+					}
+				}
+				if(waitingMessage){
+					//The user has accepted a request to talk
+					if(handle_forward_messages(socket_com, users, myUser, simKey, communicatingClient) == true){
+						//myUser wants to exit, I can delete the connection
 						waitingMessage = waitingRequest = false;
-						break;
+					} else{
+						waitingRequest = true;
+						waitingMessage = false;
 					}
-					else{
-						waitingMessage = handle_send_request(socket_com, plaintext, pt_len, users, myUser, simKey);
-						waitingRequest = !waitingMessage;
-					}
-					free(plaintext);
-					free(recv_message);
-				}
-				else if(FD_ISSET(users[intMyUser].requestPipe[readPipe], &recv_set)){
-					//A new request is arrived
-					waitingMessage = handle_recv_request(socket_com, users, myUser, simKey);
-					waitingRequest = !waitingMessage;
 				}
 			}
-			while(waitingMessage){
-				//The user has accepted a request to talk, communications can arrive from other processes (messages) or from the connected client
-				FD_ZERO(&recv_set);
-				FD_SET(socket_com, &recv_set);
-				FD_SET(users[intMyUser].messagePipe[readPipe], &recv_set);
-				if(socket_com > users[intMyUser].messagePipe[readPipe])
-					greatest = socket_com;
-				else
-					greatest = users[intMyUser].messagePipe[readPipe];
-				ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
-				if(ret < 0){
-					perror("Error during select()");
-					exit(-1);
-				}
-				if(FD_ISSET(socket_com, &recv_set)){
-
-				}
-			}
+			free(simKey);
 			close(socket_com);
 			exit(1);
 		} else {

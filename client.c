@@ -220,6 +220,8 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			//control if the other client has logged off
 			if(strcmp(plaintext, "<exit>") == 0){
 				printf("\n%s has logged off\n", clientUsername);
+				free(plaintext);
+				free(message)
 				break;
 			}
 			printf("\n");
