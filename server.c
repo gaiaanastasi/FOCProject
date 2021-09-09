@@ -968,6 +968,7 @@ int main (int argc, const char** argv){
 	}
 	initUsers(users);   
 	//Inizializzo i due set
+	/*
 	FD_ZERO(&master);
 	FD_ZERO(&read_ready);
 	
@@ -1073,7 +1074,7 @@ int main (int argc, const char** argv){
 			memcpy(password, pw, DIM_PASSWORD);
 			handle_auth(socket_com, users, myUser);
 			simKey = establishDHExhange(socket_com);
-			
+
 		} else {
 			//processo padre, si rimette in attesa di altre comunicazioni
 			close(socket_com);
