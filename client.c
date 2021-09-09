@@ -624,13 +624,15 @@ int main(int argc, const char** argv){
 			switch(command){
 				case 1:		//online people
 					sumControl(strlen("online_people"), 1);
-					send_len = strlen("online_people") + 1;
-					message_send = (unsigned char*) malloc(send_len);
-					if(message_send == NULL){
+					pt_len = strlen("online_people") + 1;
+					plaintext = (unsigned char*) malloc(pt_len);
+					if(plaintext == NULL){
 						perror("Error during malloc()");
 						exit(-1);
 					}
-					strcpy(message_send, "online_people");
+					strcpy(plaintext, "online_people");
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					free(plaintext);
 					send_obj(sock, message_send, send_len);
 					recv_len = receive_len(sock);
 					message_recv = (unsigned char*) malloc(recv_len);
@@ -639,9 +641,11 @@ int main(int argc, const char** argv){
 						exit(-1);
 					}
 					receive_obj(sock, message_recv, recv_len);
-					printf("%s", message_recv);
+					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					printf("%s", plaintext);
 					free(message_recv);
 					free(message_send);
+					free(plaintext);
 					send_len = 0;
 					recv_len = 0;
 					break;
@@ -740,7 +744,18 @@ int main(int argc, const char** argv){
 
 				case 3:		//logout
 					printf("Logging out\n");
+					pt_len = strlen("logout") + 1;
+					plaintext = (unsigned char*) malloc(pt_len);
+					if(plaintext == NULL){
+						perror("Error during malloc()");
+						exit(-1);
+					}
+					strcpy(plaintext, "logout");
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					free(plaintext);
+					send_obj(sock, message_send, send_len);
 					continueWhile = 0;
+					free(message_send);
 					break;
 				default:
 					perror("The inserted command is not valid\n");
