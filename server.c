@@ -173,7 +173,7 @@ void initUsers(struct userStruct* users){
 
 //commento qui
 //Mark new user as online
-void addUsertoList(unsigned char* username, struct userStruct* users){
+void setOnline(unsigned char* username, struct userStruct* users){
 	//GLock on the shared resource
 	int intUser = mappingUserToInt(username);
 	if(intUser == -1){
@@ -534,6 +534,7 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
+		pthread_mutex_unlock(&users[intReceiver].userMutex);
 		return false;
 	}
 	if(users[intReceiver].busy == true){
@@ -549,9 +550,11 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
+		pthread_mutex_unlock(&users[intReceiver].userMutex);
 		return false;
 	}
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
+	pthread_mutex_unlock(&users[intSender].userMutex);
 	//Creation of the request to be sent to the other user
 	messageLen = DIM_USERNAME + strlen("request") + 1;
 	message = (unsigned char*) malloc(messageLen);
@@ -561,7 +564,6 @@ bool handle_send_request(int sock, unsigned char* recv_message, int recv_len, st
 	}
 	memcpy(message, sender, DIM_USERNAME);
 	concatElements(message, "request", DIM_USERNAME, strlen("request") + 1);
-	pthread_mutex_unlock(&users[intSender].userMutex);
 	forwardMessage(receiver, message, messageLen, users, true);
 	free(message);
 	free(receiver);
@@ -675,7 +677,7 @@ EVP_PKEY* getMyPrivKey(){
 }
 
 
-void handle_auth(int sock, bool* users){
+void handle_auth(int sock, struct userStruct* users, unsigned char* username){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
@@ -762,14 +764,11 @@ void handle_auth(int sock, bool* users){
 	memset(username, 0, DIM_USERNAME);
 	memcpy(username, get_username, DIM_USERNAME);
 	
-	//Update online users' list
-	//addUsertoList(get_username, users );
-	
-		
-
+	setOnline(username, users);		
 }
 
-void establishDHExhange(int sock){
+//Returns the shared simmetric session key
+unsigned char* establishDHExhange(int sock){
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	int lim = 0;
 	EVP_PKEY* dhPrivateKey = generateDHParams();
@@ -879,13 +878,17 @@ void establishDHExhange(int sock){
 	free(plaintext);
 	free(message_recv);
 	recv_len = 0;
-
+	return sessionKey;
 	printf("QUI\n");
 	
 }
 
 int main (int argc, const char** argv){
 	sighandler_t s;
+	fd_set recv_set;
+	int intMyUser;								//integer related to the username of the logged user
+	unsigned char myUser[DIM_USERNAME];		//username of the logged user
+	unsigned char* simKey;				//simmetric shared key used for communicating with the client
 	//Defining the handler that will manage the signal sent by a process to another one to notify the arrive of a new message
 	s = signal(signalNewMessage, newMessageHandler);
 	if(s == SIG_ERR){
@@ -950,15 +953,8 @@ int main (int argc, const char** argv){
 	int socket_com;
 	socklen_t size = sizeof(indirizzo_client);
 	int i = 0;
-	//Inizializzo i due set
-	FD_ZERO(&master);
-	FD_ZERO(&read_ready);
 	
-	FD_SET(socket_ascolto, &master);	//Add the socket where I wait for connections requests on the main set
-	fdmax = socket_ascolto;	
-	FD_SET(socket_ascolto, &read_ready);
-
-	//commentato da Matte bool* users = (bool*) mmap(NULL, TOT_USERS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);	
+	
 	/*int fd = open(argv[1], O_RDONLY);
 	if(fd==-1){
 		perror("Open fail");
@@ -970,27 +966,14 @@ int main (int argc, const char** argv){
 		perror("MAP_FAILED");
 		exit(-1);
 	}
-	initUsers(users);
-	/*
-	commentato da Matte
-	 pthread_mutexattr_t mutexattr;
-	 int rc = pthread_mutexattr_init(&mutexattr);
-	 if (rc != 0){
-	   perror("pthread_mutexattr_init");
-	   exit(-1);
-	  }
-	  rc = pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
-	if (rc != 0){
-	   perror("pthread_mutexattr_setpshared");
-	   exit(-1);
-	  }
-	 rc =pthread_mutex_init(&mutex, &mutexattr);
-	 if (rc != 0){
-	   perror("pthread_mutex_init");
-	   exit(-1);
-	  }*/
-	    
+	initUsers(users);   
+	//Inizializzo i due set
+	FD_ZERO(&master);
+	FD_ZERO(&read_ready);
 	
+	FD_SET(socket_ascolto, &master);	//Add the socket where I wait for connections requests on the main set
+	fdmax = socket_ascolto;	
+	FD_SET(socket_ascolto, &read_ready);
 	while(1){
 		read_ready = master;
 		select(fdmax+1, &read_ready, NULL, NULL, NULL);
@@ -1012,6 +995,23 @@ int main (int argc, const char** argv){
 					memcpy(password, pw, DIM_PASSWORD);
 					handle_auth(socket_com, users);
 					establishDHExhange(socket_com);
+					while(1){
+							FD_ZERO(&recv_set);
+							FD_SET(i, &recv_set);
+							
+							char* command = ricevi_stringa(socket_com);
+							printf("Ho ricevuto: %s \n", command); 
+							//Gestione dei vari casi
+							if (strcmp(command, "list")== 0)
+								get_online_users(i);
+							else if (strcmp(command, "request")==0){
+								handle_send_request(i);
+							}
+							else if (strcmp(command, "logout")==0){
+                                handle_logout(i);
+							}
+							
+					}
 					
 					
 					
@@ -1026,8 +1026,10 @@ int main (int argc, const char** argv){
 						close(socket_ascolto);
 						
 						
-						/*while(1){
-						
+						while(1){
+							FD_ZERO(&recv_set);
+							FD_SET(i, &recv_set);
+							
 							char* command = ricevi_stringa(socket_com);
 							printf("Ho ricevuto: %s \n", command); 
 							//Gestione dei vari casi
@@ -1040,14 +1042,15 @@ int main (int argc, const char** argv){
                                 handle_logout(i);
 							}
 							
-						}*/
+						}
+
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
 						exit(-1);
-						/*#pragma optimize("", off)
-						   	memset(session_key, 0, session_key_size);
-						#pragma optimize("", on)
-						   	free(session_key);*/
+						//#pragma optimize("", off)
+						//   	memset(session_key, 0, session_key_size);
+						//#pragma optimize("", on)
+						//   	free(session_key);
 						
 					}
 					//Parent process
@@ -1058,8 +1061,23 @@ int main (int argc, const char** argv){
 				}
 			}
 		}
+	}*/
+	pid_t pid;
+	while(1){
+		socket_com = accept(socket_ascolto, (struct sockaddr*)&indirizzo_client, &size );
+		pid = fork();
+		if(pid == 0){
+			//processo figlio, gestisce comunicazione
+			close(socket_ascolto);
+			printf("Authentication request arrived\n");			
+			memcpy(password, pw, DIM_PASSWORD);
+			handle_auth(socket_com, users, myUser);
+			simKey = establishDHExhange(socket_com);
+			
+		} else {
+			//processo padre, si rimette in attesa di altre comunicazioni
+			close(socket_com);
+		}
 	}
 	close(socket_ascolto);
-
-	exit(-1);
 }
