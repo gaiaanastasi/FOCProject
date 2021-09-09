@@ -188,16 +188,17 @@ EVP_PKEY* getUserPbkey (unsigned char* username){
 	sumControl(DIR_SIZE, DIM_SUFFIX_FILE_PUBKEY);
 	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY+DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
-	char fileName[name_size];
+	char* fileName = (char*) malloc(name_size);
 	strncpy(fileName, (char*)DIR, DIR_SIZE );
 	strncat(fileName, (char*)username, DIM_USERNAME );
 	strncat(fileName, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY);
+	printf("filename è %s\n", fileName);
 	FILE* file = fopen(fileName, "r");
 	if(!file){
 		perror("fopen");
 		exit(-1);
 	}
-	
+	free(fileName);
 	//Retrive client's public key
 	pubkey = PEM_read_PUBKEY(file, NULL, NULL, NULL);
 	if (!pubkey){

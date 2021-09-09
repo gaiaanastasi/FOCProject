@@ -43,11 +43,11 @@ struct userStruct{
 };
 
 //commento qui//Function that adds at the end of the list a new integer. Returns false in case of error
-bool addIntList(struct intLista** testa, int num){
-	struct intLista* p;
+bool addIntList(struct intList** testa, int num){
+	struct intList* p;
 	if(*testa == NULL){
 		//the list is empty
-		*testa = (int*) malloc(sizeof(struct intList));
+		*testa = (struct intList*) malloc(sizeof(struct intList));
 		if(*testa == NULL)
 			return false;
 		(*testa) -> val = num;
@@ -58,7 +58,7 @@ bool addIntList(struct intLista** testa, int num){
 	while(p -> next!=NULL)
 		p = p -> next;
 
-	p -> next = (struct intLista*) malloc(sizeof(struct intList));
+	p -> next = (struct intList*) malloc(sizeof(struct intList));
 	if(p -> next == NULL)
 		return false;
 	p = p->next;
@@ -67,8 +67,8 @@ bool addIntList(struct intLista** testa, int num){
 }
 
 //Function that remove the first element of a list. Returns false in case of error
-bool removeFirstValueList(struct intLista** testa){
-	struct intLista* s;
+bool removeFirstValueList(struct intList** testa){
+	struct intList* s;
 	if(*testa==NULL)
 		return false;
 	s = *testa;
@@ -165,9 +165,7 @@ void initUsers(struct userStruct* users){
 		}
 	}
 }
-*/
 
-//commento qui
 //Mark new user as online
 void setOnline(unsigned char* username, struct userStruct* users){
 	//GLock on the shared resource
@@ -261,7 +259,7 @@ void forwardMessage(unsigned char* receiver, unsigned char* message, int message
 		users[intReceiver].numReq++;
 	} else{
 		write(users[intReceiver].messagePipe[writePipe], message, messageLen);
-		if(!addIntList(users[intReceiver].cpt_len, messageLen)){
+		if(!addIntList(&users[intReceiver].cpt_len, messageLen)){
 			perror("Error adding an element in a list");
 			exit(-1);
 		}
@@ -297,7 +295,7 @@ unsigned char* readAMessage(unsigned char* receiver, int* messageLen, struct use
 			exit(-1);
 		}
 		read(users[intReceiver].messagePipe[readPipe], message, *messageLen);
-		if(!removeFirstValueList(users[intReceiver].cpt_len)){
+		if(!removeFirstValueList(&users[intReceiver].cpt_len)){
 			perror("Error removing an element from a list");
 			exit(-1);
 		}
@@ -413,10 +411,11 @@ unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 //Function that send a formatted string containing the message that reports the currently online users
 void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsername, unsigned char* simKey){
 	//Get the total number of active user
-	//unsigned int tot = getNumberOfOnlineUsers(users);
+	unsigned int tot = getNumberOfOnlineUsers(users);
 	unsigned char message[MAX_LEN_MESSAGE];
 	unsigned char* sendMessage;
 	int send_len;
+	int conta = 1;
 	char heading[6];	//the heading can contain an index composed by 3 digits
 	int i = 0;
 	int intUser = mappingUserToInt(myUsername);
@@ -424,25 +423,29 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 		perror("Error during getNumberOfOnlineUsers()");
 		exit(-1);
 	}
-	strcpy(message, "\nThe currently online users are:\n");
-	for(i = 0; i < TOT_USERS; i++){
-		pthread_mutex_lock(&users[i].userMutex);
-		if(users[i].online && i != intUser && (strlen(message) + strlen(users[i].username) + 7) < MAX_LEN_MESSAGE){	//message must be able to contain the length of the username + the heading + '\n'
-			sprintf(heading, "%d) ", i);
-			strcat(message, heading);
-			strcat(message, users[i].username);
-			strcat(message, "\n");
+	if(tot > 1){
+		strcpy(message, "\nThe currently online users are:\n");
+		for(i = 0; i < TOT_USERS; i++){
+			pthread_mutex_lock(&users[i].userMutex);
+			if(users[i].online && i != intUser && (strlen(message) + strlen(users[i].username) + 7) < MAX_LEN_MESSAGE){	//message must be able to contain the length of the username + the heading + '\n'
+				sprintf(heading, "%d) ", conta);
+				strcat(message, heading);
+				strcat(message, users[i].username);
+				strcat(message, "\n");
+				conta++;
+			}
+			pthread_mutex_unlock(&users[i].userMutex);
 		}
-		pthread_mutex_unlock(&users[i].userMutex);
+	} else{
+		strcpy(message, "\nYou are the only user that is currently online\n");
 	}
 	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
 	send_obj(sock, sendMessage, send_len);
-	free(sendMessage);
-	//send_obj(sock, online, tot); DEVO FARE UNA SEND PER MANDARE VETTORI DI STRINGHE	
+	free(sendMessage);	
 }
 
 //Function that manage the sending of a request to talk. It returns the username of the requested user if request is accepted, NULL otherwise
-int handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* sender, unsigned char* simKey){
+unsigned char* handle_send_request(int sock, unsigned char* recv_message, int recv_len, struct userStruct* users, unsigned char* sender, unsigned char* simKey){
 	//COMPLETARE
 	unsigned char* receiver;
 	unsigned char* requestString;
@@ -574,7 +577,7 @@ int handle_send_request(int sock, unsigned char* recv_message, int recv_len, str
 		perror("Error during select()");
 		exit(-1);
 	}
-	if(FD_ISSET(users[intSender].messagePipe[readPipe]), &set){
+	if(FD_ISSET(users[intSender].messagePipe[readPipe], &set)){
 		//the answer is arrived
 		answer = readAMessage(sender, &answerLen, users, false);
 		if(strcmp(answer, "y") == 0){
@@ -835,12 +838,14 @@ void handle_auth(int sock, struct userStruct* users, unsigned char* username){
 	setOnline(username, users);		
 }
 
-void establishDHExhange(int sock, unsigned char* sessionKey){
+//Function that handles the negotiation of a shared symmetric session key by means of ephemeral Diffie-Hellman. It returns the symmetric key
+unsigned char* establishDHExhange(int sock, unsigned char* username){
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	int lim = 0;
 	EVP_PKEY* dhPrivateKey = generateDHParams();
 	EVP_PKEY* myPrivK;
 	EVP_PKEY* DHClientPubK;
+	unsigned char* sessionKey;
 	printf("DH parameters generated for session with %s \n", username);
 	int dimOpBuffer = 0;
 	unsigned char* opBuffer = NULL;
@@ -851,9 +856,8 @@ void establishDHExhange(int sock, unsigned char* sessionKey){
 	int recv_len =0;
 	int pt_len = 0;
 	unsigned char* plaintext = NULL;
-
+	
 	myPrivK = getMyPrivKey();
-
 	//SERIALIZATION OF THE DH PUBLIC KEY
 	opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
 	if(opBuffer == NULL){
@@ -950,14 +954,9 @@ void establishDHExhange(int sock, unsigned char* sessionKey){
 }
 
 int main (int argc, const char** argv){
-	sighandler_t s;
-	int intMyUser;								//integer related to the username of the logged user
-	unsigned char myUser[DIM_USERNAME];		//username of the logged user
-	unsigned char* simKey;				//simmetric shared key used for communicating with the client
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
-	unsigned char* sessionkey;
 	getPassword(pw);
 	printf("\n");
 				
@@ -1119,6 +1118,9 @@ int main (int argc, const char** argv){
 			}
 		}
 	}*/
+	int intMyUser;				//integer related to the username of the logged user
+	unsigned char myUser[DIM_USERNAME];	//username of the logged user
+	unsigned char* simKey;			//simmetric shared key used for communicating with the client
 	fd_set recv_set;
 	pid_t pid;
 	int greatest;
@@ -1138,7 +1140,7 @@ int main (int argc, const char** argv){
 			printf("Authentication request arrived\n");			
 			memcpy(password, pw, DIM_PASSWORD);
 			handle_auth(socket_com, users, myUser);
-			simKey = establishDHExhange(socket_com);
+			simKey = establishDHExhange(socket_com, myUser);
 			intMyUser = mappingUserToInt(myUser);
 			if(intMyUser < 0){
 				perror("Error during mappingUserToInt()");
@@ -1205,6 +1207,7 @@ int main (int argc, const char** argv){
 					}
 				}
 			}
+			printf("\n%s has logged out\n", myUser);
 			free(simKey);
 			close(socket_com);
 			exit(1);

@@ -221,7 +221,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			if(strcmp(plaintext, "<exit>") == 0){
 				printf("\n%s has logged off\n", clientUsername);
 				free(plaintext);
-				free(message)
+				free(message);
 				break;
 			}
 			printf("\n");
@@ -606,7 +606,7 @@ int main(int argc, const char** argv){
 
 	while(continueWhile){
 		//("%s", commandMessage);
-		printf("Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n (4) to log out\n");
+		printf("Type:\n(1) to see who's online\n(2) to send a request to talk\n(3) to log out\n");
 		printf("What do you want to do?\n");
 		FD_ZERO(&readFdSet);		//cleaning the set
 		FD_SET(0, &readFdSet);		//stdin added to the set
