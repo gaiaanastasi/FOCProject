@@ -37,11 +37,13 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	unsigned char* charPointer;		//generic char pointer 
 	fd_set readSet;					//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
+	printf("deserializzo\n");
 	clientPubK = deserializePublicKey(serializedPubKey, keyLen);
 	if(clientPubK == NULL){
-		perror("Error during deserialization of the publi key");
+		perror("Error during deserialization of the public key");
 		exit(-1);
 	}
+	printf("deserializzato\n");
 	if(requestingClient){
 		generateNonce(clientNonce);
 		send_obj(sock, clientNonce, DIM_NONCE);

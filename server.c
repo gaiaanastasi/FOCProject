@@ -38,10 +38,12 @@ struct userStruct{
 	int numReq;		//Number of received request that has to be read yet
 	int messagePipe[2];			//Pipe that contains the messages received by the user
 	int requestPipe[2];			//Pipe that contains the requests to talk received by the user
+	int lenPipe[2];		//Pipe that contains the length of the messages received by the user
 	struct intList* cpt_len;	//list of lengths of the ciphertexts that are written in the file
 	pthread_mutex_t userMutex;	//mutex that manage the access to the element of this structure and to the relative file
 };
 
+/*
 //commento qui//Function that adds at the end of the list a new integer. Returns false in case of error
 bool addIntList(struct intList** testa, int num){
 	struct intList* p;
@@ -89,7 +91,8 @@ int listTotalLen(struct intList* testa){
 	}
 	return sum;
 }
-//commento qui
+*/
+
 unsigned char myNonce[DIM_NONCE];
 //pthread_mutex_t mutex; //commentato da Matte pthread_mutex_t mutex;
 unsigned char username[DIM_USERNAME];
@@ -112,7 +115,7 @@ unsigned char* mappingIntToUser(unsigned int i){
 		ret = (unsigned char*) malloc (strlen("matteo")+1);
 		strncpy((char*)ret, "matteo", strlen("matteo") + 1);
 	}
-	if(i==1) {
+	else if(i==1) {
 		ret = (unsigned char*) malloc (strlen("gaia")+1);
 		strncpy((char*)ret, "gaia", strlen("gaia") + 1);
 	}
@@ -146,7 +149,7 @@ void initUsers(struct userStruct* users){
 			perror("pthread_mutex_init");
 			exit(-1);
 		}
-		users[i].cpt_len = NULL;
+		//users[i].cpt_len = NULL;
 		username = mappingIntToUser(i);
 		strcpy(users[i].username, username);
 		free(username);
@@ -159,6 +162,11 @@ void initUsers(struct userStruct* users){
 			exit(-1);
 		}
 		ret = pipe(users[i].requestPipe);
+		if(ret != 0){
+			perror("Error during creation of the pipe");
+			exit(-1);
+		}
+		ret = pipe(users[i].lenPipe);
 		if(ret != 0){
 			perror("Error during creation of the pipe");
 			exit(-1);
@@ -259,10 +267,11 @@ void forwardMessage(unsigned char* receiver, unsigned char* message, int message
 		users[intReceiver].numReq++;
 	} else{
 		write(users[intReceiver].messagePipe[writePipe], message, messageLen);
-		if(!addIntList(&users[intReceiver].cpt_len, messageLen)){
+		/*if(!addIntList(&users[intReceiver].cpt_len, messageLen)){
 			perror("Error adding an element in a list");
 			exit(-1);
-		}
+		}*/
+		write(users[intReceiver].lenPipe[writePipe], (void*)&messageLen, sizeof(int));
 	}
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 }
@@ -288,17 +297,18 @@ unsigned char* readAMessage(unsigned char* receiver, int* messageLen, struct use
 		users[intReceiver].numReq--;
 	} else{
 		//the size of the first message is in the first element of the list
-		*messageLen = users[intReceiver].cpt_len -> val;
+		//*messageLen = users[intReceiver].cpt_len -> val;
+		read(users[intReceiver].lenPipe[readPipe], (void*)messageLen, sizeof(int));
 		message = (unsigned char*) malloc(*messageLen);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
 		read(users[intReceiver].messagePipe[readPipe], message, *messageLen);
-		if(!removeFirstValueList(&users[intReceiver].cpt_len)){
+		/*if(!removeFirstValueList(&users[intReceiver].cpt_len)){
 			perror("Error removing an element from a list");
 			exit(-1);
-		}
+		}*/
 	}
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 	return message;
@@ -586,6 +596,16 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 			return receiver;
 		} else {
 			//request refused
+			messageLen = strlen("refused") + 1;
+			message = (unsigned char*) malloc(messageLen);
+			if(!message){
+				perror("Error during malloc()");
+				exit(-1);
+			}
+			strcpy(message, "refused");
+			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+			send_obj(sock, buffer, bufferLen);
+			users[intSender].busy = false;
 			free(answer);
 			return NULL;
 		}
@@ -1131,6 +1151,9 @@ int main (int argc, const char** argv){
 	unsigned char* plaintext;
 	int pt_len;
 	unsigned char* communicatingClient = NULL;	//username of the client with wich the connected client is talking to
+	EVP_PKEY* communicatingClient_pubKey;	//public key of the user that accepted to talk with the connected client
+	unsigned char* buffer;
+	int bufferLen;
 	while(1){
 		socket_com = accept(socket_ascolto, (struct sockaddr*)&indirizzo_client, &size );
 		pid = fork();
@@ -1180,8 +1203,23 @@ int main (int argc, const char** argv){
 						else{
 							communicatingClient = handle_send_request(socket_com, plaintext, pt_len, users, myUser, simKey);
 							if(communicatingClient != NULL){
+								printf("%s ha accettato %s\n", communicatingClient, myUser);
+								free(plaintext);
 								waitingMessage = true;
 								waitingRequest = false;
+								communicatingClient_pubKey = getUserPbkey(communicatingClient);
+								plaintext = serializePublicKey(communicatingClient_pubKey, &pt_len);
+								if(!plaintext){
+									perror("Error during serialization of the public key\n");
+									exit(-1);
+								}
+								buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen);
+								if(!buffer){
+									perror("Error during encryption of the message\n");
+									exit(-1);
+								}
+								send_obj(socket_com, buffer, bufferLen);
+								free(buffer);
 							}
 						}
 						free(plaintext);
@@ -1189,10 +1227,26 @@ int main (int argc, const char** argv){
 					}
 					else if(FD_ISSET(users[intMyUser].requestPipe[readPipe], &recv_set)){
 						//A new request is arrived
+						sleep(20);
 						communicatingClient = handle_recv_request(socket_com, users, myUser, simKey);
 						if(communicatingClient != NULL){
+							printf("%s ha accettato %s\n", myUser, communicatingClient);
 							waitingMessage = true;
 							waitingRequest = false;
+							communicatingClient_pubKey = getUserPbkey(communicatingClient);
+							plaintext = serializePublicKey(communicatingClient_pubKey, &pt_len);
+							if(!plaintext){
+								perror("Error during serialization of the public key\n");
+								exit(-1);
+							}
+							buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen);
+							if(!buffer){
+								perror("Error during encryption of the message\n");
+								exit(-1);
+							}
+							send_obj(socket_com, buffer, bufferLen);
+							free(buffer);
+							free(plaintext);
 						}
 					}
 				}
@@ -1207,6 +1261,9 @@ int main (int argc, const char** argv){
 					}
 				}
 			}
+			pthread_mutex_lock(&users[intMyUser].userMutex);
+			users[intMyUser].online = false;
+			pthread_mutex_unlock(&users[intMyUser].userMutex);
 			printf("\n%s has logged out\n", myUser);
 			free(simKey);
 			close(socket_com);

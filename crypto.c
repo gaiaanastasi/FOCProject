@@ -192,7 +192,6 @@ EVP_PKEY* getUserPbkey (unsigned char* username){
 	strncpy(fileName, (char*)DIR, DIR_SIZE );
 	strncat(fileName, (char*)username, DIM_USERNAME );
 	strncat(fileName, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY);
-	printf("filename è %s\n", fileName);
 	FILE* file = fopen(fileName, "r");
 	if(!file){
 		perror("fopen");
