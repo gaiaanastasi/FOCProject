@@ -19,12 +19,8 @@
 #include <stdbool.h>
 #include <signal.h>
 
-#define signalNewMessage 10
-#define signalNewRequest 12
 #define writePipe 1
 #define readPipe 0
-int signalMessageVar;	//variable that is modified only by the new message signal handler. It is equal to 1 if a new message is available
-int signalRequestVar;	//variable that is modified only by the new message request handler. It is equal to 1 if a new request is available
 
 const int MAX_LEN_MESSAGE = 256;
 char* server_port = "4242";
@@ -885,22 +881,9 @@ unsigned char* establishDHExhange(int sock){
 
 int main (int argc, const char** argv){
 	sighandler_t s;
-	fd_set recv_set;
 	int intMyUser;								//integer related to the username of the logged user
 	unsigned char myUser[DIM_USERNAME];		//username of the logged user
 	unsigned char* simKey;				//simmetric shared key used for communicating with the client
-	//Defining the handler that will manage the signal sent by a process to another one to notify the arrive of a new message
-	s = signal(signalNewMessage, newMessageHandler);
-	if(s == SIG_ERR){
-		perror("Error during defining the signal");
-		exit(-1);
-	}
-	s = signal(signalNewRequest, newRequestHandler);
-	if(s == SIG_ERR){
-		perror("Error during defining the signal");
-		exit(-1);
-	}
-	signalMessageVar = signalRequestVar = 0;
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
@@ -1063,7 +1046,15 @@ int main (int argc, const char** argv){
 			}
 		}
 	}*/
+	fd_set recv_set;
 	pid_t pid;
+	int greatest;
+	bool waitingRequest = true;		//true if the connected client has not accepted a request to talk yet
+	bool waitingMessage = false;		//true if the connected client has already accepted a request to talk
+	unsigned char* recv_message;
+	int recv_len;
+	unsigned char* plaintext;
+	int pt_len;
 	while(1){
 		socket_com = accept(socket_ascolto, (struct sockaddr*)&indirizzo_client, &size );
 		pid = fork();
@@ -1074,7 +1065,70 @@ int main (int argc, const char** argv){
 			memcpy(password, pw, DIM_PASSWORD);
 			handle_auth(socket_com, users, myUser);
 			simKey = establishDHExhange(socket_com);
-
+			intMyUser = mappingUserToInt(myUser);
+			if(intMyUser < 0){
+				perror("Error during mappingUserToInt()");
+				exit(-1);
+			}
+			while(waitingRequest){
+			//Communications can arrive from other processes (requests) or from the connected client
+				FD_ZERO(&recv_set);
+				FD_SET(socket_com, &recv_set);
+				FD_SET(users[intMyUser].requestPipe[readPipe], &recv_set);
+				if(socket_com > users[intMyUser].requestPipe[readPipe])
+					greatest = socket_com;
+				else
+					greatest = users[intMyUser].requestPipe[readPipe];
+				ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
+				if(ret < 0){
+					perror("Error during select()");
+					exit(-1);
+				}
+				if(FD_ISSET(socket_com, &recv_set)){
+					//A new message from the client is arrived
+					recv_len = receive_len(socket_com);
+					recv_message = (unsigned char*) malloc(recv_len);
+					if(!recv_message){
+						perror("Error during malloc()");
+						exit(-1);
+					}
+					receive_obj(socket_com, recv_message, recv_len);
+					plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
+					if(strcmp(plaintext, "online_people") == 0)
+						getOnlineUser(socket_com, users, myUser);
+					else if(strcmp(plaintext, "logout") == 0){
+						waitingMessage = waitingRequest = false;
+						break;
+					}
+					else{
+						waitingMessage = handle_send_request(socket_com, plaintext, pt_len, users, myUser, simKey);
+						waitingRequest = !waitingMessage;
+					}
+					free(plaintext);
+					free(recv_message);
+				}
+				else if(FD_ISSET(users[intMyUser].requestPipe[readPipe], &recv_set)){
+					//A new request is arrived
+					waitingMessage = handle_recv_request(socket_com, users, myUser, simKey);
+					waitingRequest = !waitingMessage;
+				}
+			}
+			while(waitingMessage){
+				FD_ZERO(&recv_set);
+				FD_SET(socket_com, &recv_set);
+				FD_SET(users[intMyUser].messagePipe[readPipe], &recv_set);
+				if(socket_com > users[intMyUser].messagePipe[readPipe])
+					greatest = socket_com;
+				else
+					greatest = users[intMyUser].messagePipe[readPipe];
+				ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
+				if(ret < 0){
+					perror("Error during select()");
+					exit(-1);
+				}
+			}
+			close(socket_com);
+			exit(1);
 		} else {
 			//processo padre, si rimette in attesa di altre comunicazioni
 			close(socket_com);
