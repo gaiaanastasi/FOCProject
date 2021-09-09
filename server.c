@@ -835,14 +835,12 @@ void handle_auth(int sock, struct userStruct* users, unsigned char* username){
 	setOnline(username, users);		
 }
 
-//Returns the shared simmetric session key
-unsigned char* establishDHExhange(int sock){
+void establishDHExhange(int sock, unsigned char* sessionKey){
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	int lim = 0;
 	EVP_PKEY* dhPrivateKey = generateDHParams();
 	EVP_PKEY* myPrivK;
 	EVP_PKEY* DHClientPubK;
-	unsigned char* sessionKey;
 	printf("DH parameters generated for session with %s \n", username);
 	int dimOpBuffer = 0;
 	unsigned char* opBuffer = NULL;
@@ -959,6 +957,7 @@ int main (int argc, const char** argv){
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
+	unsigned char* sessionkey;
 	getPassword(pw);
 	printf("\n");
 				
@@ -1050,7 +1049,7 @@ int main (int argc, const char** argv){
 						
 					memcpy(password, pw, DIM_PASSWORD);
 					handle_auth(socket_com, users);
-					establishDHExhange(socket_com);
+					establishDHExhange(socket_com, sessionkey);
 					while(1){
 							FD_ZERO(&recv_set);
 							FD_SET(i, &recv_set);
@@ -1089,24 +1088,26 @@ int main (int argc, const char** argv){
 							char* command = ricevi_stringa(socket_com);
 							printf("Ho ricevuto: %s \n", command); 
 							//Gestione dei vari casi
-							if (strcmp(command, "list")== 0)
-								get_online_users(i);
+							if (strcmp(command, "online_people")== 0)
+								printf("List\n");
 							else if (strcmp(command, "request")==0){
+								printf("request\n");
 								handle_send_request(i);
 							}
 							else if (strcmp(command, "logout")==0){
-                                handle_logout(i);
+								printf("logout\n");
+                                //handle_logout(i);
 							}
 							
 						}
 
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
-						exit(-1);
 						//#pragma optimize("", off)
 						//   	memset(session_key, 0, session_key_size);
 						//#pragma optimize("", on)
 						//   	free(session_key);
+						exit(0);
 						
 					}
 					//Parent process

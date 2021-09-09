@@ -16,7 +16,7 @@
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
 const int MAX_LEN_MESSAGE = 256;
-const char commandMessage[MAX_LEN_MESSAGE] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
+//const char commandMessage[MAX_LEN_MESSAGE] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
 
 
 //Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
@@ -603,9 +603,11 @@ int main(int argc, const char** argv){
 	recv_len = 0;
 
 	printf("Hi! This is a secure messaging system\n");
-/*
+
 	while(continueWhile){
-		printf("%s", commandMessage);
+		//("%s", commandMessage);
+		printf("Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n (4) to log out\n");
+		printf("What do you want to do?\n");
 		FD_ZERO(&readFdSet);		//cleaning the set
 		FD_SET(0, &readFdSet);		//stdin added to the set
 		FD_SET(sock, &readFdSet);		//sock added to the set
@@ -623,6 +625,7 @@ int main(int argc, const char** argv){
 			while(getchar() != '\n');		//cleaning the stdin buffer
 			switch(command){
 				case 1:		//online people
+					sumControl(strlen("online_people"), 1);
 					pt_len = strlen("online_people") + 1;
 					plaintext = (unsigned char*) malloc(pt_len);
 					if(plaintext == NULL){
@@ -843,7 +846,7 @@ int main(int argc, const char** argv){
 					perror("Error during symmetric decription");
 					exit(-1);
 				}
-				if(communication_with_other_client(sock, plaintext, pt_len, myPivK, false, opBuffer, serverSymmetricKey))
+				if(communication_with_other_client(sock, plaintext, pt_len, myPrivK, false, opBuffer, serverSymmetricKey))
 					continueWhile = 0;
 				free(plaintext);
 				free(opBuffer);
