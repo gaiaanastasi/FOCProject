@@ -531,7 +531,7 @@ EVP_PKEY* getMyPrivKey(){
 }
 
 
-void handle_auth(int sock, bool* users){
+void handle_auth(int sock, struct userStruct* users){
 	//Server retrieves his certificate and generate a nonce
 	//char myNonce[DIM_NONCE];
 	generateNonce(myNonce);
@@ -625,13 +625,12 @@ void handle_auth(int sock, bool* users){
 
 }
 
-void establishDHExhange(int sock){
+void establishDHExhange(int sock, unsigned char* sessionKey){
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	int lim = 0;
 	EVP_PKEY* dhPrivateKey = generateDHParams();
 	EVP_PKEY* myPrivK;
 	EVP_PKEY* DHClientPubK;
-	unsigned char* sessionKey;
 	printf("DH parameters generated for session with %s \n", username);
 	int dimOpBuffer = 0;
 	unsigned char* opBuffer = NULL;
@@ -741,7 +740,7 @@ void establishDHExhange(int sock){
 }
 
 int main (int argc, const char** argv){
-	sighandler_t s;
+	/*sighandler_t s;
 	//Defining the handler that will manage the signal sent by a process to another one to notify the arrive of a new message
 	s = signal(signalNewMessage, newMessageHandler);
 	if(s == SIG_ERR){
@@ -752,10 +751,11 @@ int main (int argc, const char** argv){
 	if(s == SIG_ERR){
 		perror("Error during defining the signal");
 		exit(-1);
-	}
+	}*/
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
 	unsigned char pw[DIM_PASSWORD];
+	unsigned char* sessionkey;
 	getPassword(pw);
 	printf("\n");
 				
@@ -825,7 +825,7 @@ int main (int argc, const char** argv){
 		perror("MAP_FAILED");
 		exit(-1);
 	}
-	initUsers(users);
+	//initUsers(users);
 	/*
 	commentato da Matte
 	 pthread_mutexattr_t mutexattr;
@@ -866,7 +866,7 @@ int main (int argc, const char** argv){
 						
 					memcpy(password, pw, DIM_PASSWORD);
 					handle_auth(socket_com, users);
-					establishDHExhange(socket_com);
+					establishDHExhange(socket_com, sessionkey);
 					
 					
 					
@@ -881,28 +881,34 @@ int main (int argc, const char** argv){
 						close(socket_ascolto);
 						
 						
-						/*while(1){
+						while(1){
 						
-							char* command = ricevi_stringa(socket_com);
-							printf("Ho ricevuto: %s \n", command); 
+							int len = receive_len(socket_com);
+							unsigned char* command = (unsigned char*) malloc(len);
+							if(!command){
+								perror("malloc");
+								exit(-1);
+							}
+							receive_obj(socket_com, command, len);
+							printf("I have received: %s from %s \n", command, username); 
 							//Gestione dei vari casi
-							if (strcmp(command, "list")== 0)
-								get_online_users(i);
+							if (strcmp(command, "online_people")== 0)
+								printf("List\n");
 							else if (strcmp(command, "request")==0){
+								printf("request\n");
 								handle_send_request(i);
 							}
 							else if (strcmp(command, "logout")==0){
-                                handle_logout(i);
+								printf("logout\n");
+                                //handle_logout(i);
 							}
 							
-						}*/
+						}
 						close(i);
 						FD_CLR(i, &master);		//Delete the socket from the main set
-						exit(-1);
-						/*#pragma optimize("", off)
-						   	memset(session_key, 0, session_key_size);
 						#pragma optimize("", on)
-						   	free(session_key);*/
+						   	free(sessionkey);
+						exit(0);
 						
 					}
 					//Parent process
