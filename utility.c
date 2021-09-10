@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <termios.h>
 
-#define TOT_USERS 2
+#define TOT_USERS 8
 #define DIM_PASSWORD 32
 
 int receive_len (int socket_com){
@@ -41,6 +41,16 @@ void receive_obj (int socket_com, unsigned char* buf, int dim_buf){
 	}
 }
 
+void send_int(int sock, size_t len){
+	uint32_t dim_obj = htonl(len);
+	ssize_t no_err;
+	//send the message length first
+	no_err = send (sock, &dim_obj, sizeof(uint32_t), 0);		
+	if(no_err == -1 || no_err < sizeof(uint32_t)){
+		perror("send lunghezza dell'oggetto");	
+		exit(-1);
+	}
+}
 
 void send_obj (int sock, unsigned char* buf, size_t len){		
 //Send the message via socket
