@@ -603,7 +603,7 @@ int main(int argc, const char** argv){
 		exit(-1);
 	}
 	signatureFunction(serverNonce, DIM_NONCE, signature, &signatureLen, myPrivK);
-	sumControl(dimOpBuffer, signatureLen);
+	sumControl(DIM_NONCE, signatureLen);
 	unsigned char* buf = (unsigned char*) malloc(DIM_NONCE+signatureLen);
 	if(!buf){
 		perror("malloc");
