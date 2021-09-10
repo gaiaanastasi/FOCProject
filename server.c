@@ -679,6 +679,7 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		perror("Error during mappingUserToInt()");
 		exit(-1);
 	}
+	printf("\n gestisco conversazione tra %s e %s\n", myUser, communicatingClient);
 	while(1){
 		//communications can arrive from other processes (messages) or from the connected client
 		FD_ZERO(&recv_set);
@@ -695,6 +696,7 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		}
 		if(FD_ISSET(socket_com, &recv_set)){
 			//A new message sent from the connected client is arrived
+			printf("arrivato messaggio da %s\n", myUser);
 			messageLen = receive_len(socket_com);
 			message = (unsigned char*) malloc(messageLen);
 			if(!message){
@@ -702,17 +704,24 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 				exit(-1);
 			}
 			receive_obj(socket_com, message, messageLen);
+			printf("messaggio di %s ricevuto\n", myUser);
 			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
-			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
-			if(strcmp(plaintext, "<exit>") == 0){
-				printf("The client wants to exit\n");
-				free(message);
-				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
-				free(plaintext);
-				return true;
+			if(messageLen != DIM_NONCE){
+				//If messageLen is equal to DIM_NONCE it means that the message is the nonce 
+				//(because in a whatever encryption, the len is at least greater than DIM_TAG + DIM_IV + DIM_AAD, that is greater than DIM_NONCE)
+				//the nonce is sent in clear. So trying to the decrypt it would cause problems
+				plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
+				if(strcmp(plaintext, "<exit>") == 0){
+					printf("The client wants to exit\n");
+					free(message);
+					forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+					free(plaintext);
+					return true;
+				}
 			}
-			free(plaintext);
+			printf("forwardo messaggio di %s a %s\n", myUser, communicatingClient);
 			forwardMessage(communicatingClient, message, messageLen, users, false);
+			printf("forwardato messaggio di %s a %s\n", myUser, communicatingClient);
 			free(message);
 		}
 		else if(FD_ISSET(users[intMyUser].messagePipe[readPipe], &recv_set)){
@@ -1227,7 +1236,6 @@ int main (int argc, const char** argv){
 					}
 					else if(FD_ISSET(users[intMyUser].requestPipe[readPipe], &recv_set)){
 						//A new request is arrived
-						sleep(20);
 						communicatingClient = handle_recv_request(socket_com, users, myUser, simKey);
 						if(communicatingClient != NULL){
 							printf("%s ha accettato %s\n", myUser, communicatingClient);

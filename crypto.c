@@ -525,6 +525,10 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 	iv = (unsigned char*) malloc(DIM_IV);
 	aad = (unsigned char*) malloc(DIM_AAD);
 	tag = (unsigned char*) malloc(DIM_TAG);
+	if(!aad | !iv | !tag | !ciphertext){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	extract_data_from_array(iv, recv_buffer, 0, DIM_IV);
 	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_IV + DIM_AAD);
 	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_IV + DIM_AAD + DIM_TAG);
@@ -548,7 +552,11 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
     if(ret < 0)
 		return NULL;
 	*plaintext_len += len;
-	plaintext = (unsigned char*) malloc(*plaintext_len);
+	plaintext = (unsigned char*) malloc((*plaintext_len));
+	if(!plaintext){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	memcpy(plaintext, buffer, *plaintext_len);
 	free(tag);
 	free(iv);
