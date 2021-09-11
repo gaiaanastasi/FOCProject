@@ -489,40 +489,41 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 			}
 			receive_obj(socket_com, message, messageLen);
 			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
-			if(messageLen != DIM_NONCE){
-				//If messageLen is equal to DIM_NONCE it means that the message is the nonce 
-				//(because in a whatever encryption, the len is at least greater than DIM_TAG + DIM_IV + DIM_AAD, that is greater than DIM_NONCE)
-				//the nonce is sent in clear. So trying to the decrypt it would cause problems
-				plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
-				if(strcmp(plaintext, "<exit>") == 0){
-					//The connected client wants to exit
-					printf("The client wants to exit\n");
-					free(message);
-					forwardMessage(communicatingClient, plaintext, pt_len, users, false);
-					free(plaintext);
-					pthread_mutex_lock(&users[intMyUser].userMutex);
-					users[intMyUser].busy = false;
-					pthread_mutex_unlock(&users[intMyUser].userMutex);
-					return true;
-				}
+			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
+			if(strcmp(plaintext, "<exit>") == 0){
+				//The connected client wants to exit
+				printf("The client wants to exit\n");
+				free(message);
+				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+				free(plaintext);
+				pthread_mutex_lock(&users[intMyUser].userMutex);
+				users[intMyUser].busy = false;
+				pthread_mutex_unlock(&users[intMyUser].userMutex);
+				return true;
 			}
-			forwardMessage(communicatingClient, message, messageLen, users, false);
-			free(message);
+			else{
+				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+				free(plaintext);
+				free(message);
+			}
 		}
 		else if(FD_ISSET(users[intMyUser].messagePipe[readPipe], &recv_set)){
 			//A new message destinated to the connected client is arrived
-			message = readAMessage(myUser, &messageLen, users, false);
+			plaintext = readAMessage(myUser, &pt_len, users, false);
 			//I have to control if the message is "<exit>". If it is so, it means that the other client has already communicated to the connected client
 			//that he wants to exit and now it is communicating the same thing to the server
-			if(strcmp(message, "<exit>") == 0){
-			pthread_mutex_lock(&users[intMyUser].userMutex);
-			users[intMyUser].busy = false;
-			pthread_mutex_unlock(&users[intMyUser].userMutex);
-				free(message);
+			if(strcmp(plaintext, "<exit>") == 0){
+				pthread_mutex_lock(&users[intMyUser].userMutex);
+				users[intMyUser].busy = false;
+				pthread_mutex_unlock(&users[intMyUser].userMutex);
+				free(plaintext);
 				return false;
 			}
 			//If it is not "<exit>" I have to forward it to the connected client
+			message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen);
 			send_obj(socket_com, message, messageLen);
+			free(message);
+			free(plaintext);
 		}
 	}
 }
