@@ -807,7 +807,7 @@ int main (int argc, const char** argv){
 		exit(-1);
 	}
 
-	printf("Server in listening \n");
+	printf("Server is listening \n");
 	fd_set master; 		//Main set 
 	fd_set read_ready;	//Read set
 	int fdmax;			//Max number of descriptors
