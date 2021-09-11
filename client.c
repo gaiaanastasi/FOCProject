@@ -340,7 +340,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			}
 			receive_obj(sock, message, msg_len);
 			opBuffer = symmetricDecription(message, msg_len, &dimOpBuffer, serverSimKey);
-			if(!opBuffer)}{
+			if(!opBuffer){
 				perror("Error during symmetric decryption");
 				exit(-1);
 			}
