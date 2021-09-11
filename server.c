@@ -561,7 +561,7 @@ EVP_PKEY* getMyPrivKey(){
 }
 
 
-void handle_auth(int sock, struct userStruct* users, unsigned char* username){
+void handle_auth(int sock){
 	//Server retrieves his certificate and generate a nonce
 	generateNonce(myNonce);
 	
@@ -587,54 +587,6 @@ void handle_auth(int sock, struct userStruct* users, unsigned char* username){
 	OPENSSL_free(cert_buf);
 	send_obj(sock, msg, size_msg);
 	printf("Certificate and nonce sent to the client \n");
-	/*
-	//Receive signed nonce from client
-	int signed_size = receive_len(sock);
-	unsigned char signed_msg[signed_size];
-	receive_obj(sock, signed_msg, signed_size); 
-	
-	
-	//Get the nonce and the username from the message I have received
-	unsigned char get_username[DIM_USERNAME];
-	//Get client nonce
-	extract_data_from_array(clientNonce, signed_msg, 0, DIM_NONCE);
-	sumControl(DIM_USERNAME, DIM_NONCE);
-	int lim = DIM_USERNAME + DIM_NONCE;
-	//Get username
-	extract_data_from_array(get_username, signed_msg, DIM_NONCE, lim);
-	sumControl(lim, DIM_NONCE);
-	lim += DIM_NONCE;
-	unsigned char signed_nonce[DIM_NONCE];
-	//Get nonce
-	extract_data_from_array(signed_nonce, signed_msg,DIM_USERNAME+DIM_NONCE, lim);
-	subControlInt(signed_size, lim);
-	int signature_len = signed_size - lim;
-	unsigned char* signature = (unsigned char*) malloc(signature_len);
-	if(!signature){
-		perror("malloc");
-		exit(-1);
-	}
-	//Get digital signature
-	extract_data_from_array(signature, signed_msg, lim, signed_size);
-	
-	//Get the public key from pem file
-	EVP_PKEY* pubkey = getUserPbkey(get_username);
-	
-	//Signature verification
-	bool ret =verifySignature(signature, myNonce, signature_len, DIM_NONCE, pubkey);
-	//Comparison between myNonce and the nonce the client has sent me back
-	bool ret2 = comparisonUnsignedChar(myNonce, signed_nonce, DIM_NONCE);
-	if (!(ret && ret2)){
-		perror("Error during authentication of the user\n");
-		exit(-1);
-	}
-	EVP_PKEY_free(pubkey);
-	free(signature);
-
-	memset(username, 0, DIM_USERNAME);
-	memcpy(username, get_username, DIM_USERNAME);
-	
-	setOnline(username, users);	*/	
 }
 
 //Function that handles the negotiation of a shared symmetric session key by means of ephemeral Diffie-Hellman. It returns the symmetric key
@@ -807,6 +759,8 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 	return sessionKey;	
 }
 
+
+
 int main (int argc, const char** argv){
     int socket_ascolto; //Socket where our server wait for connections
 	printf("Insert password:");
@@ -892,7 +846,7 @@ int main (int argc, const char** argv){
 			close(socket_ascolto);
 			printf("Authentication request arrived\n");			
 			memcpy(password, pw, DIM_PASSWORD);
-			handle_auth(socket_com, users, myUser);
+			handle_auth(socket_com);
 			simKey = establishDHExhange(socket_com, myUser, users);
 			intMyUser = mappingUserToInt(myUser);
 			if(intMyUser < 0){

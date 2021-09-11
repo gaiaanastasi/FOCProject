@@ -84,12 +84,7 @@ void extract_data_from_array(unsigned char* dest, unsigned char* src, int start,
 		perror("integer overflow");
 		dest = NULL;
 		return;
-	}
-	/*for(i = start; i < end; i++){
-		dest[j] = src[i];
-		j++;
-	}*/
-	
+	}	
 	memset(dest, 0, end-start);
 	memcpy(dest, src+start, end-start);
 }

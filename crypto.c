@@ -16,10 +16,9 @@
 #define DIM_SUFFIX_FILE_PUBKEY 12
 #define DIM_SUFFIX_FILE_PRIVKEY 13
 #define DIM_PASSWORD 32
-#define AAD "0000"
 #define DIM_TAG 16
 #define DIM_BLOCK 128
-#define DIM_AAD 4
+#define DIM_AAD 12
 #define DIM_IV 12
 #define DIR_SIZE 6
 #define DIR "keys/"
@@ -472,7 +471,11 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	unsigned char* tag = (unsigned char*) malloc(DIM_TAG);
 	unsigned char* ciphertext = (unsigned char*) malloc(plaintext_len + DIM_TAG);
 	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
+	unsigned char* AAD = (unsigned char*) malloc(DIM_AAD);
 	ret = RAND_bytes(&iv[0], DIM_IV);
+	if (ret!=1)
+		return NULL;
+	ret = RAND_bytes(&AAD[0], DIM_AAD);
 	if (ret!=1)
 		return NULL;
 	ctx = EVP_CIPHER_CTX_new();
@@ -504,6 +507,8 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	concatElements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
 	free(ciphertext);
 	free(iv);
+	free(tag);
+	free(AAD);
 	return outBuffer;
 }
 

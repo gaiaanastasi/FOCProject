@@ -288,22 +288,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				exit(-1);
 			}
 			receive_obj(sock, message, msg_len);
-			/*
-			//we have to check if the message has been sent by the server. In such a case, the plaintext would be "<exit>"
-			//and it means that the other client has logged off
-			plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey);
-			if(plaintext == NULL){
-				perror("Error during the decription of the message");
-				exit(-1);
-			}
-			if(strcmp(plaintext, "<exit>") == 0){
-				printf("\n%s has logged off\n", clientUsername);
-				free(plaintext);
-				free(message);
-				return false;
-			}
-			free(plaintext);
-			*/
 			plaintext = symmetricDecription(message, msg_len, &pt_len, simKey);
 			if(plaintext == NULL){
 				perror("Error during the decription of the message");
@@ -494,48 +478,6 @@ int main(int argc, const char** argv){
 	free(message_recv);
 	recv_len = 0;
 
-	/*//CREATION OF THE MESSAGE THAT HAS TO BE SENT TO THE SERVER (CLIENT AUTHENTICATION)
-	signature = (unsigned char*) malloc(EVP_PKEY_size(myPrivK));
-	if(signature == NULL){
-		perror("Error during malloc()");
-		exit(-1);
-	}
-	signatureFunction(serverNonce, DIM_NONCE, signature, &signatureLen, myPrivK);
-	sumControl(DIM_NONCE, signatureLen);
-	unsigned char* buf = (unsigned char*) malloc(DIM_NONCE+signatureLen);
-	if(!buf){
-		perror("malloc");
-		exit(-1);
-	}
-	concat2Elements(buf, serverNonce, signature, DIM_NONCE, signatureLen);
-	//sumControl(DIM_USERNAME, dimOpBuffer);
-	sumControl(DIM_USERNAME, signatureLen+DIM_NONCE);
-	send_len = DIM_USERNAME +  signatureLen + DIM_NONCE;
-	sumControl (send_len, DIM_NONCE);
-	send_len +=DIM_NONCE;
-	message_send = (unsigned char*) malloc(send_len);
-	if(!message_send){
-		perror("malloc");
-		exit(-1);
-	}
-	generateNonce(myNonce);
-	// MESSAGE STRUCTURE: <clientNonce> | <username>| {<serverNonce>}signature
-	memcpy(message_send, myNonce, DIM_NONCE);
-	concatElements(message_send, username,DIM_NONCE, DIM_USERNAME);
-	int lim = DIM_NONCE + DIM_USERNAME;
-	concatElements(message_send, serverNonce, lim, DIM_NONCE);
-	lim += DIM_NONCE;
-	concatElements(message_send, signature, lim, signatureLen);
-	send_obj(sock, message_send, send_len);
-	free(message_send);
-	free(signature);
-	free(buf);
-	send_len = 0;
-	signatureLen = 0;
-	dimOpBuffer =0;
-	lim=0;*/
-
-	//inizio nuovo per ban logic
 	//SYMMETRIC SESSION KEY NEGOTIATION BY MEANS OF EPHEMERAL DIFFIE-HELLMAN
 	dhPrivateKey = generateDHParams();
 	//SERIALIZATION OF THE DH PUBLIC KEY
@@ -595,43 +537,6 @@ int main(int argc, const char** argv){
 	//At first I have to send the length of the signature
 	send_int(sock, signatureLen);
 	send_obj(sock, message_send, send_len);
-	//fine nuovo per ban logic
-
-	/*unsigned char* buf;	//operative buffer
-	int lim;		//length of buf
-	sumControl (DIM_NONCE, DIM_NONCE);
-	lim = DIM_NONCE+DIM_NONCE;
-	sumControl(lim, dimOpBuffer);
-	lim += dimOpBuffer;
-	buf = (unsigned char*) malloc(lim);
-	//MESSAGE STRUCTURE: <clientNonce> | <serverNonce> | <pubkeyDH>
-	concatElements(buf, myNonce, 0, DIM_NONCE);
-	concatElements(buf, serverNonce, DIM_NONCE, DIM_NONCE);
-	concatElements(buf, opBuffer, DIM_NONCE + DIM_NONCE, dimOpBuffer);
-	//asymmetric encryption
-	message_send = from_pt_to_DigEnv(buf, lim, serverPubK, &send_len);
-	if(message_send == NULL){
-		perror("Error during the asymmetric encryption\n");
-		exit(-1);
-	}
-	// <encrypted_key> | <IV> | <ciphertext>
-	send_obj(sock, message_send, send_len);
-
-	//plaintext already freed by from_pt_to_DigEnv()
-	free(message_send);
-	send_len = 0;
-
-	//delete public key from opBuffer
-	#pragma optimize("", off)
-   	memset(opBuffer, 0, dimOpBuffer);
-	memset(buf, 0, lim);
-	#pragma optimize("", on)
-	free(opBuffer);
-	free(buf);
-	dimOpBuffer = 0;
-	lim = 0;*/
-
-
 	
 	//RECEIVING DH PUBLIC KEY OF THE SERVER
 	signatureLen = receive_len(sock);
