@@ -49,6 +49,7 @@ unsigned int mappingUserToInt(unsigned char* username){
 	for(i = 0; i < TOT_USERS; i++){
 		if(strcmp(usernames[i], username) == 0)
 			return i;
+		IncControl(i);
 	}
 	return -1;
 }
@@ -59,7 +60,11 @@ unsigned char* mappingIntToUser(unsigned int i){
 		return NULL;
 	}
 	unsigned char* ret = (unsigned char*) malloc(DIM_USERNAME);
-	strcpy(ret, usernames[i]);
+	if(!ret){
+		perror("malloc");
+		exit(-1);
+	}
+	strncpy(ret, usernames[i],DIM_USERNAME);
 	return ret;
 }
 
@@ -91,7 +96,7 @@ void initUsers(struct userStruct* users){
 			perror("Error during mappintgIntToUser()");
 			exit(-1);
 		}
-		strcpy(users[i].username, username);
+		strncpy(users[i].username, username, DIM_USERNAME);
 		free(username);
 		users[i].online = false;
 		users[i].busy = false;
@@ -111,6 +116,7 @@ void initUsers(struct userStruct* users){
 			perror("Error during creation of the pipe");
 			exit(-1);
 		}
+		IncControl(i);
 	}
 }
 
@@ -148,6 +154,7 @@ void forwardMessage(unsigned char* receiver, unsigned char* message, int message
 	pthread_mutex_lock(&users[intReceiver].userMutex);
 	if(request){
 		write(users[intReceiver].requestPipe[writePipe], message, messageLen);
+		IncControl(users[intReceiver].numReq);
 		users[intReceiver].numReq++;
 	} else{
 		write(users[intReceiver].messagePipe[writePipe], message, messageLen);
@@ -167,6 +174,8 @@ unsigned char* readAMessage(unsigned char* receiver, int* messageLen, struct use
 	}
 	pthread_mutex_lock(&users[intReceiver].userMutex);
 	if(request){
+		IncControl(strlen("request"));
+		sumControl(DIM_USERNAME, strlen("request"));
 		*messageLen = DIM_USERNAME + strlen("request") + 1;
 		message = (unsigned char*) malloc(*messageLen);
 		if(!message){
@@ -191,7 +200,11 @@ unsigned char* readAMessage(unsigned char* receiver, int* messageLen, struct use
 unsigned int getNumberOfOnlineUsers(struct userStruct* users){
 	unsigned int tot = 0;
 	for (unsigned int i=0; i<TOT_USERS; i++){
-		if(users[i].online) tot++;
+		if(users[i].online) {
+			IncControl(tot);
+			tot++;
+		}
+		IncControl(i);
 	}
 	return tot;
 }
@@ -212,21 +225,29 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 		exit(-1);
 	}
 	if(tot > 1){
-		strcpy(message, "\nThe currently online users are:\n");
+		IncControl(strlen("\nThe currently online users are:\n"));
+		strncpy(message, "\nThe currently online users are:\n", strlen("\nThe currently online users are:\n")+1);
 		for(i = 0; i < TOT_USERS; i++){
 			pthread_mutex_lock(&users[i].userMutex);
+			sumControl(strlen(message), strlen(users[i].username));
+			sumControl(strlen(message) + strlen(users[i].username), 7);
 			if(users[i].online && i != intUser && (strlen(message) + strlen(users[i].username) + 7) < MAX_LEN_MESSAGE){	//message must be able to contain the length of the username + the heading + "\n"
 				sprintf(heading, "%d) ", conta);
-				strcat(message, heading);
-				strcat(message, users[i].username);
-				strcat(message, "\n");
+				strncat(message, heading, 7);
+				strncat(message, users[i].username, DIM_USERNAME);
+				IncControl(strlen("\n"));
+				strncat(message, "\n", strlen("\n")+1);
+				IncControl(conta);
 				conta++;
 			}
 			pthread_mutex_unlock(&users[i].userMutex);
+			IncControl(i);
 		}
 	} else{
-		strcpy(message, "\nYou are the only user that is currently online\n");
+		IncControl(strlen("\nYou are the only user that is currently online\n"));
+		strncpy(message, "\nYou are the only user that is currently online\n", strlen("\nYou are the only user that is currently online\n")+1);
 	}
+	sumControl(strlen(message), 1);
 	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
 	send_obj(sock, sendMessage, send_len);
 	free(sendMessage);	
@@ -250,13 +271,18 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 	intSender = mappingUserToInt(sender);
 	pthread_mutex_lock(&users[intSender].userMutex);
 	users[intSender].busy = true;
+	IncControl(strlen("request"));
+	sumControl(DIM_USERNAME, strlen("request") + 1);
 	if(recv_len != (DIM_USERNAME + strlen("request") + 1)){
+		IncControl(strlen("wrong_format"));
 		message = malloc(strlen("wrong_format") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		strcpy(message, "wrong_format");
+		IncControl(strlen("wrong_format"));
+		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		send_obj(sock, buffer, bufferLen);
 		free(message);
@@ -265,6 +291,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		pthread_mutex_unlock(&users[intSender].userMutex);
 		return NULL;
 	}
+	IncControl(strlen("request"));
 	requestString = (unsigned char*) malloc(strlen("request") + 1);
 	if(!requestString){
 		perror("Error during malloc()");
@@ -272,12 +299,15 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 	}
 	extract_data_from_array(requestString, recv_message, DIM_USERNAME, recv_len);
 	if(strcmp(requestString, "request") != 0){
+		IncControl(strlen("wrong_format"));
 		message = malloc(strlen("wrong_format") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		strcpy(message, "wrong_format");
+		IncControl(strlen("wrong_format"));
+		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		send_obj(sock, buffer, bufferLen);
 		free(message);
@@ -296,12 +326,15 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 	intReceiver = mappingUserToInt(receiver);
 	//Control if the username exists and if the relative user is online and not busy
 	if(intReceiver < 0){
+		IncControl(strlen("wrong_format"));
 		message = malloc(strlen("wrong_format") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		strcpy(message, "wrong_format");
+		IncControl(strlen("wrong_format"));
+		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		send_obj(sock, buffer, bufferLen);
 		free(message);
@@ -312,12 +345,15 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 	}
 	pthread_mutex_lock(&users[intReceiver].userMutex);
 	if(users[intReceiver].online == false){
+		IncControl(strlen("not_online"));
 		message = malloc(strlen("not_online") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		strcpy(message, "not_online");
+		IncControl(strlen("not_online"));
+		strncpy(message, "not_online", strlen("not_online")+1);
+		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		send_obj(sock, buffer, bufferLen);
 		free(message);
@@ -328,12 +364,15 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		return NULL;
 	}
 	if(users[intReceiver].busy == true){
+		IncControl(strlen("busy"));
 		message = malloc(strlen("busy") + 1);
 		if(!message){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		strcpy(message, "busy");
+		IncControl(strlen("busy"));
+		strncpy(message, "busy", strlen("busy")+1);
+		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		send_obj(sock, buffer, bufferLen);
 		free(message);
@@ -346,6 +385,8 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 	pthread_mutex_unlock(&users[intSender].userMutex);
 	//Creation of the request to be sent to the other user
+	IncControl(strlen("request"));
+	sumControl(DIM_USERNAME, strlen("request") + 1);
 	messageLen = DIM_USERNAME + strlen("request") + 1;
 	message = (unsigned char*) malloc(messageLen);
 	if(!message){
@@ -353,12 +394,14 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		exit(-1);
 	}
 	memcpy(message, sender, DIM_USERNAME);
+	IncControl(strlen("request"));
 	concatElements(message, "request", DIM_USERNAME, strlen("request") + 1);
 	forwardMessage(receiver, message, messageLen, users, true);
 	free(message);
 	FD_ZERO(&set);
 	FD_SET(users[intSender].messagePipe[readPipe], &set);
 	//waiting for the answer
+	IncControl(users[intSender].messagePipe[readPipe]);
 	ret = select(users[intSender].messagePipe[readPipe] + 1, &set, NULL, NULL, NULL);
 	if(ret < 0){
 		perror("Error during select()");
@@ -373,13 +416,16 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 			return receiver;
 		} else {
 			//request refused
+			IncControl(strlen("refused"));
 			messageLen = strlen("refused") + 1;
 			message = (unsigned char*) malloc(messageLen);
 			if(!message){
 				perror("Error during malloc()");
 				exit(-1);
 			}
-			strcpy(message, "refused");
+			IncControl(strlen("refused"));
+			strncpy(message, "refused", strlen("refused")+1);
+			IncControl(strlen(message));
 			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 			send_obj(sock, buffer, bufferLen);
 			users[intSender].busy = false;
@@ -438,6 +484,7 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 	}
 	extract_data_from_array(answer, message, 0, 2);
 	free(message);
+	IncControl(strlen(answer));
 	forwardMessage(sender, answer, strlen(answer) + 1, users, false);
 	if(strcmp(answer, "y") == 0){
 		free(answer);
@@ -474,6 +521,7 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 			greatest = socket_com;
 		else
 			greatest = users[intMyUser].messagePipe[readPipe];
+		IncControl(greatest);
 		ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
 		if(ret < 0){
 			perror("Error during select()");
@@ -672,6 +720,10 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 	//Check for my nonce
 	dimOpBuffer = DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the nonce sent in the last message
+	if(!opBuffer){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	sumControl (DIM_NONCE, DIM_NONCE);
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, DIM_NONCE + DIM_NONCE);
 	if(memcmp(opBuffer, myNonce, DIM_NONCE) != 0){
@@ -682,9 +734,14 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 	dimOpBuffer = 0;
 	
 	//Deserialization of the client's DH public key
+	sumControl(DIM_NONCE + DIM_NONCE, signatureLen);
 	subControlInt(pt_len, DIM_NONCE+DIM_NONCE+signatureLen);
 	dimOpBuffer = pt_len - (DIM_NONCE+DIM_NONCE+signatureLen);
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the serialization of the DH public key of the server
+	if(!opBuffer){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE+DIM_NONCE, pt_len - signatureLen);
 	DHClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 	if(DHClientPubK == NULL){
@@ -706,6 +763,10 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 	sumControl(DIM_NONCE + DIM_NONCE, dimOpBuffer);
 	lim = DIM_NONCE+DIM_NONCE + dimOpBuffer;
 	buf = (unsigned char*) malloc(lim);
+	if(!buf){
+		perror("Error during malloc()");
+		exit(-1);
+	}
 	//MESSAGE STRUCTURE: <serverNonce> | <clientNonce> | <pubkeyDH> | <signature>
 	concatElements(buf, myNonce, 0, DIM_NONCE);
 	concatElements(buf, clientNonce, DIM_NONCE, DIM_NONCE);
@@ -864,6 +925,7 @@ int main (int argc, const char** argv){
 						greatest = socket_com;
 					else
 						greatest = users[intMyUser].requestPipe[readPipe];
+					IncControl(greatest);
 					ret = select(greatest + 1, &recv_set, NULL, NULL, NULL);
 					if(ret < 0){
 						perror("Error during select()");
