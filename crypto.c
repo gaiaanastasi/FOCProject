@@ -66,7 +66,7 @@ void signatureFunction(char* plaintext, int dimpt, char* signature, int* signatu
 
 //function wthat verifies the signature
 bool verifySignature (unsigned char* signature,  unsigned char* unsigned_msg, int signature_size, int unsigned_size, EVP_PKEY* pubkey){
-	printf("Verifying signature\n");
+	
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	if(!ctx){
 		perror("ctx was not allocated");
@@ -193,6 +193,8 @@ EVP_PKEY* getUserPbkey (unsigned char* username){
 		exit(-1);
 	}
 	strncpy(fileName, (char*)DIR, DIR_SIZE );
+	subControlInt(DIR_SIZE, 1);
+	fileName[DIR_SIZE - 1] ='\0';
 	strncat(fileName, (char*)username, DIM_USERNAME );
 	strncat(fileName, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY);
 	FILE* file = fopen(fileName, "r");

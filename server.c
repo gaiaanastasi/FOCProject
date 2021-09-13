@@ -65,6 +65,8 @@ unsigned char* mappingIntToUser(unsigned int i){
 		exit(-1);
 	}
 	strncpy(ret, usernames[i], DIM_USERNAME);
+	subControlInt(DIM_USERNAME, 1);
+	ret[DIM_USERNAME - 1] ='\0';
 	return ret;
 }
 
@@ -96,6 +98,8 @@ void initUsers(struct userStruct* users){
 			exit(-1);
 		}
 		strncpy(users[i].username, username, DIM_USERNAME);
+		subControlInt(DIM_USERNAME,1);
+		users[i].username[DIM_USERNAME-1] = '\0';
 		free(username);
 		users[i].online = false;
 		users[i].busy = false;
@@ -226,6 +230,7 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 	if(tot > 1){
 		IncControl(strlen("\nThe currently online users are:\n"));
 		strncpy(message, "\nThe currently online users are:\n", strlen("\nThe currently online users are:\n")+1);
+		message[strlen("\nThe currently online users are:\n")] = '\0';
 		for(i = 0; i < TOT_USERS; i++){
 			pthread_mutex_lock(&users[i].userMutex);
 			sumControl(strlen(message), strlen(users[i].username));
@@ -245,6 +250,7 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 	} else{
 		IncControl(strlen("\nYou are the only user that is currently online\n"));
 		strncpy(message, "\nYou are the only user that is currently online\n", strlen("\nYou are the only user that is currently online\n")+1);
+		message[strlen("\nYou are the only user that is currently online\n")] = '\0';
 	}
 	sumControl(strlen(message), 1);
 	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
@@ -285,6 +291,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		}
 		IncControl(strlen("wrong_format"));
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		message[strlen("wrong_format")] ='\0';
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		if(!buffer){
@@ -314,6 +321,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		}
 		IncControl(strlen("wrong_format"));
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		message[strlen("wrong_format")] = '\0';
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		if(!buffer){
@@ -346,6 +354,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		}
 		IncControl(strlen("wrong_format"));
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
+		message[strlen("wrong_format")] = '\0';
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		if(!buffer){
@@ -369,6 +378,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		}
 		IncControl(strlen("not_online"));
 		strncpy(message, "not_online", strlen("not_online")+1);
+		message[strlen("not_online")] = '\0';
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		if(!buffer){
@@ -392,6 +402,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		}
 		IncControl(strlen("busy"));
 		strncpy(message, "busy", strlen("busy")+1);
+		message[strlen("busy")] = '\0';
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 		if(!buffer){
@@ -449,6 +460,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 			}
 			IncControl(strlen("refused"));
 			strncpy(message, "refused", strlen("refused")+1);
+			message[strlen("refused")] = '\0';
 			IncControl(strlen(message));
 			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
 			if(!buffer){

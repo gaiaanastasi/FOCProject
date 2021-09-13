@@ -444,6 +444,8 @@ int main(int argc, const char** argv){
 	
 	//LOADING PRIVATE KEY
 	strncpy(fileName, "keys/", DIR_SIZE);
+	subControlInt(DIR_SIZE,1);
+	fileName[DIR_SIZE-1] = '\0';
 	strncat(fileName, username, DIM_USERNAME);
 	strncat(fileName, "_privkey.pem", DIM_SUFFIX_FILE_PRIVKEY);
 	file = fopen(fileName, "r");
@@ -460,7 +462,8 @@ int main(int argc, const char** argv){
 
 	//CERTIFICATE STORE CREATION
 	IncControl(strlen("certificates/CA_cert.pem""certificates/CA_cert.pem"));
-	strncpy(fileName, "certificates/CA_cert.pem", strlen("certificates/CA_cert.pem""certificates/CA_cert.pem")+1);
+	strncpy(fileName, "certificates/CA_cert.pem", strlen("certificates/CA_cert.pem")+1);
+	fileName[strlen("certificates/CA_cert.pem")] = '\0';
 	file = fopen(fileName, "r");
 	if(file == NULL){
 		perror("Error during opening of the file CA_cert.pem\n");
@@ -715,6 +718,7 @@ int main(int argc, const char** argv){
 					}
 					IncControl(strlen("online_people"));
 					strncpy(plaintext, "online_people", strlen("online_people")+1);
+					plaintext[strlen("online_people")]='\0';
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
 					if(!message_send){
 						perror("Error during symmetric encryption");
@@ -851,6 +855,7 @@ int main(int argc, const char** argv){
 					}
 					IncControl(strlen("logout"));
 					strncpy(plaintext, "logout", strlen("logout")+1);
+					plaintext[strlen("logout")]='\0';
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
 					if(!message_send){
 						perror("Error during symmetric encryption");
