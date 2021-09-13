@@ -407,34 +407,6 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
    	return message;
 }
 
-/*
-//function that store the plaintext, given the ciphertext, the encrypted key and the IV of a digital envelope. It returns false in case of error
-bool asymmetricDecryption(EVP_CIPHER* cipher, unsigned char* pt, int* pt_len, unsigned char* encrypted_key, int encrypted_key_len, unsigned char* iv, int iv_len, unsigned char* cpt, int cpt_len, EVP_PKEY* prvKey){
-	int ret;
-	int nd = 0; 	// bytes decrypted at each chunk
-   	int ndtot = 0; 	// total decrypted bytes
-	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-	if(ctx == NULL)
-		return false;
-	ret = EVP_OpenInit(ctx, cipher, encrypted_key, encrypted_key_len, iv, prvKey);
-	if(ret == 0)
-		return false;
-	ret = EVP_OpenUpdate(ctx, pt, &nd, cpt, cpt_len);
-	if(ret == 0)
-		return false;
-	ndtot += nd;
-	ret = EVP_OpenFinal(ctx, pt + ndtot, &nd);
-	if(ret == 0)
-		return false;
-	ndtot += nd;
-	*pt_len = ndtot;
-
-	EVP_CIPHER_CTX_free(ctx);
-	
-	EVP_CIPHER_CTX(ctx);
-	return true;
-}*/
-
 //takes the received message (formatted { <encrypted_key> | <IV> | <ciphertext> }) and allocates and returns the respective plaintext and stores its length in pt_len. Return NULL in case of error
 unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, int* pt_len, EVP_PKEY* prvKey){
 	int ret;
