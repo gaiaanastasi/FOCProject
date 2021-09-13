@@ -1016,7 +1016,7 @@ int main (int argc, const char** argv){
 								}
 								send_obj(socket_com, buffer, bufferLen);
 								free(buffer);
-								EVP_PKEY_free(communicatingClient_pubkey);
+								EVP_PKEY_free(communicatingClient_pubKey);
 							}
 						}
 						free(plaintext);
@@ -1042,7 +1042,7 @@ int main (int argc, const char** argv){
 							send_obj(socket_com, buffer, bufferLen);
 							free(buffer);
 							free(plaintext);
-							EVP_PKEY_free(communicatingClient_pubkey);
+							EVP_PKEY_free(communicatingClient_pubKey);
 						}
 					}
 				}
