@@ -15,8 +15,7 @@
 
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
-const int MAX_LEN_MESSAGE = 256;
-//const char commandMessage[MAX_LEN_MESSAGE] = "Type: \n (1) to see who's online \n (2) to send a request to talk \n (3) to wait for a request \n	(4) to log out\n\n What do you want to do? ";
+const int MAX_LEN_MESSAGE = 10000;
 
 
 //Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
@@ -85,7 +84,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			perror("Error during symmetric encryption");
 			exit(-1);
 		}
-		//opBufefr contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> } encrypted by means of my public key
+		//opBuffer contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> } encrypted by means of my public key
 		plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
 		if(plaintext == NULL){
 			perror("Error during the asymmetric decription");

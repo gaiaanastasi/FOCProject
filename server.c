@@ -21,7 +21,7 @@
 #define writePipe 1
 #define readPipe 0
 
-const int MAX_LEN_MESSAGE = 256;
+const int MAX_LEN_MESSAGE = 10000;
 char* server_port = "4242";
 
 struct userStruct{
