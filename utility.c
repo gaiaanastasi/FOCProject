@@ -111,9 +111,17 @@ void subControlInt(int a, int b){
 	
 }
 
+void IncControl(int a){
+	if (a==INT_MAX){
+		perror("integer overflow");
+		exit(-1);
+	}
+}
+
 bool comparisonUnsignedChar (unsigned char* src1, unsigned char* src2, int len){
 	for (int i = 0; i<len; i++){
 		if(src1[i] != src2[i]) return false;
+		IncControl(i);
 	}
 	return true;
 }

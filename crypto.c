@@ -188,6 +188,10 @@ EVP_PKEY* getUserPbkey (unsigned char* username){
 	sumControl(DIM_USERNAME, (DIM_SUFFIX_FILE_PUBKEY+DIR_SIZE));
 	int name_size = DIM_USERNAME + DIM_SUFFIX_FILE_PUBKEY + DIR_SIZE;
 	char* fileName = (char*) malloc(name_size);
+	if(!fileName){
+		perror("malloc");
+		exit(-1);
+	}
 	strncpy(fileName, (char*)DIR, DIR_SIZE );
 	strncat(fileName, (char*)username, DIM_USERNAME );
 	strncat(fileName, "_pubkey.pem", DIM_SUFFIX_FILE_PUBKEY);
@@ -221,6 +225,10 @@ unsigned char* serializePublicKey(EVP_PKEY* privK, int* bufferLen){
 	buffer = NULL;
 	*bufferLen = BIO_get_mem_data(myBio, &buffer);
 	buffer = (unsigned char*) malloc(*bufferLen);
+	if(!buffer){
+		perror("malloc");
+		exit(-1);
+	}
 	ret = BIO_read(myBio, (void*) buffer, *bufferLen);
 	if(ret <= 0)
 		return NULL;
@@ -277,6 +285,10 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	//key derivation by hashing the shared secret
 	Hctx = EVP_MD_CTX_new();
 	digest = (unsigned char*) malloc(EVP_MD_size(EVP_sha256()));
+	if(!digest){
+		perror("malloc");
+		exit(-1);
+	}
 	ret = EVP_DigestInit(Hctx, EVP_sha256());
 	if(ret != 1)
 		return NULL;
@@ -289,6 +301,10 @@ unsigned char* symmetricKeyDerivation_for_aes_128_gcm(EVP_PKEY* privK, EVP_PKEY*
 	EVP_MD_CTX_free(Hctx);
 	keyLen = EVP_CIPHER_key_length(cipher);
 	key = (unsigned char*) malloc(keyLen);
+	if(!key){
+		perror("malloc");
+		exit(-1);
+	}
 	if(!memcpy(key, digest, keyLen))
 		return NULL;
 #pragma optimize("", off);
@@ -351,10 +367,12 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
 	ret = EVP_SealUpdate(ctx, ciphertext, &nc, pt, pt_len);
 	if(ret == 0)
 		return NULL;
+	sumControl(nctot, nc);
 	nctot += nc;
 	ret = EVP_SealFinal(ctx, ciphertext + nctot, &nc);
 	if(ret == 0)
 		return NULL;
+	sumControl(nctot, nc);
 	nctot += nc;
 	cpt_len = nctot;
 
@@ -368,10 +386,18 @@ unsigned char* from_pt_to_DigEnv(unsigned char* pt, int pt_len, EVP_PKEY* pubkey
 	sumControl(encrypted_key_len, iv_len);
 	dimB = encrypted_key_len + iv_len;
 	buffer = (unsigned char*) malloc(dimB);
+	if(!buffer){
+		perror("malloc");
+		exit(-1);
+	}
 	concat2Elements(buffer, encrypted_key, iv, encrypted_key_len, iv_len);
 	sumControl(dimB, cpt_len);
 	*dimM = dimB + cpt_len;
 	message = (unsigned char*) malloc(*dimM);
+	if(!message){
+		perror("malloc");
+		exit(-1);
+	}
 	concat2Elements(message, buffer, ciphertext, dimB, cpt_len);
 	free(iv);
 	free(encrypted_key);
@@ -446,10 +472,12 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 	ret = EVP_OpenUpdate(ctx, pt, &nd, cpt, cpt_len);
 	if(ret == 0)
 		return NULL;
+	sumControl(ndtot, nd);
 	ndtot += nd;
 	ret = EVP_OpenFinal(ctx, pt + ndtot, &nd);
 	if(ret == 0)
 		return NULL;
+	sumControl(ndtot, nd);
 	ndtot += nd;
 	*pt_len = ndtot;
 	EVP_CIPHER_CTX_free(ctx);
@@ -469,9 +497,14 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
     int ciphertext_len = 0;
 	unsigned char* outBuffer;
 	unsigned char* tag = (unsigned char*) malloc(DIM_TAG);
+	sumControl(plaintext_len, DIM_TAG);
 	unsigned char* ciphertext = (unsigned char*) malloc(plaintext_len + DIM_TAG);
 	unsigned char* iv = (unsigned char*) malloc(DIM_IV);
 	unsigned char* AAD = (unsigned char*) malloc(DIM_AAD);
+	if(!tag | !ciphertext | !iv | !AAD){
+		perror("malloc");
+		exit(-1);
+	}
 	ret = RAND_bytes(&iv[0], DIM_IV);
 	if (ret!=1)
 		return NULL;
@@ -494,16 +527,26 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 	ret = EVP_EncryptFinal(ctx, ciphertext + len, &len);
     if(1 != ret)
         return NULL;
+	sumControl(ciphertext_len, len);
     ciphertext_len += len;
 	ret = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, tag);
     if(1 != ret)
         return NULL;
     EVP_CIPHER_CTX_free(ctx);
+	sumControl(ciphertext_len, DIM_TAG);
+	sumControl(ciphertext_len+DIM_TAG, DIM_IV);
+	sumControl(ciphertext_len+DIM_TAG+DIM_IV, DIM_AAD);
     *totalLen = ciphertext_len + DIM_TAG + DIM_IV + DIM_AAD;
 	outBuffer = (unsigned char*) malloc(*totalLen);
+	if(!outBuffer){
+		perror("malloc");
+		exit(-1);
+	}
 	concatElements(outBuffer, iv, 0, DIM_IV);
 	concatElements(outBuffer, AAD, DIM_IV, DIM_AAD);
+	sumControl(DIM_AAD, DIM_IV);
 	concatElements(outBuffer, tag, DIM_AAD + DIM_IV, DIM_TAG);
+	sumControl(DIM_AAD+ DIM_IV, DIM_TAG);
 	concatElements(outBuffer, ciphertext, DIM_AAD + DIM_IV + DIM_TAG, ciphertext_len);
 	free(ciphertext);
 	free(iv);
@@ -535,6 +578,8 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 		exit(-1);
 	}
 	extract_data_from_array(iv, recv_buffer, 0, DIM_IV);
+	sumControl(DIM_AAD, DIM_IV);
+	sumControl(DIM_IV+DIM_AAD, DIM_TAG);
 	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_IV + DIM_AAD);
 	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_IV + DIM_AAD + DIM_TAG);
 	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, bufferLen);
@@ -556,6 +601,7 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 
     if(ret < 0)
 		return NULL;
+	sumControl(*plaintext_len, len);
 	*plaintext_len += len;
 	plaintext = (unsigned char*) malloc((*plaintext_len));
 	if(!plaintext){

@@ -91,6 +91,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		free(receive);
+		sumControl(DIM_NONCE, DIM_NONCE);
 		extract_data_from_array(clientNonce, plaintext, DIM_NONCE, DIM_NONCE + DIM_NONCE);
 		receive = (unsigned char*) malloc(DIM_NONCE);
 		if(!receive){
@@ -103,12 +104,15 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		free(receive);
+		subControlInt(pt_len, DIM_NONCE);
+		subControlInt(pt_len - DIM_NONCE, DIM_NONCE);
 		dimOpBuffer = pt_len - DIM_NONCE - DIM_NONCE;
 		opBuffer = (unsigned char*) malloc(dimOpBuffer);
 		if(opBuffer == NULL){
 			perror("Error during malloc()");
 			exit(-1);
 		}
+		sumControl(DIM_NONCE, DIM_NONCE);
 		extract_data_from_array(opBuffer, plaintext, DIM_NONCE + DIM_NONCE, pt_len);
 		dhClientPubK = deserializePublicKey(opBuffer, dimOpBuffer);
 		if(dhClientPubK == NULL){
@@ -133,6 +137,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		}
 		memcpy(plaintext, clientNonce, DIM_NONCE);
 		concatElements(plaintext, myNonce, DIM_NONCE, DIM_NONCE);
+		sumControl(DIM_NONCE,DIM_NONCE);
 		concatElements(plaintext, opBuffer, DIM_NONCE + DIM_NONCE, dimOpBuffer);
 		free(opBuffer);
 		dimOpBuffer = 0;
@@ -282,6 +287,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			//control if the user want to leave the conversation
 			if(strcmp(plaintext, "<exit>") == 0){
 				//the first time I send the message to the other client, to notify him that I'm leaving the chat
+				IncControl(strlen("<exit>"));
 				pt_len = strlen("<exit>") + 1;
 				message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
 				if(message == NULL){
@@ -311,6 +317,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			}
 
 			//encryption and sending of the message
+			IncControl(strlen(plaintext));
 			pt_len = strlen(plaintext) + 1;
 			message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
 			if(message == NULL){
@@ -455,6 +462,7 @@ int main(int argc, const char** argv){
 	fclose(file);	
 
 	//CERTIFICATE STORE CREATION
+	IncControl(strlen("certificates/CA_cert.pem""certificates/CA_cert.pem"));
 	strncpy(fileName, "certificates/CA_cert.pem", strlen("certificates/CA_cert.pem""certificates/CA_cert.pem")+1);
 	file = fopen(fileName, "r");
 	if(file == NULL){
@@ -614,6 +622,10 @@ int main(int argc, const char** argv){
 	//check for the nonces
 	dimOpBuffer = DIM_NONCE;
 	opBuffer = (unsigned char*) malloc(dimOpBuffer);	//it'll contain the nonce sent in the last message
+	if(!opBuffer){
+		perror("malloc");
+		exit(-1);
+	}
 	sumControl (DIM_NONCE, DIM_NONCE);
 	extract_data_from_array(opBuffer, plaintext, DIM_NONCE, DIM_NONCE + DIM_NONCE);
 	if(memcmp(opBuffer, myNonce, DIM_NONCE) != 0){
@@ -702,7 +714,8 @@ int main(int argc, const char** argv){
 						perror("Error during malloc()");
 						exit(-1);
 					}
-					strcpy(plaintext, "online_people");
+					IncControl(strlen("online_people"));
+					strncpy(plaintext, "online_people", strlen("online_people")+1);
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
 					free(plaintext);
 					send_obj(sock, message_send, send_len);
@@ -741,6 +754,7 @@ int main(int argc, const char** argv){
 						free(opBuffer);
 						break;
 					}
+					IncControl(strlen("request"));
 					sumControl(DIM_USERNAME, strlen("request") + 1);
 					pt_len = DIM_USERNAME + strlen("request") + 1;
 					plaintext = (unsigned char*) malloc(pt_len);
@@ -821,13 +835,15 @@ int main(int argc, const char** argv){
 
 				case 3:		//logout
 					printf("\nLogging out\n");
+					IncControl(strlen("logout"));
 					pt_len = strlen("logout") + 1;
 					plaintext = (unsigned char*) malloc(pt_len);
 					if(plaintext == NULL){
 						perror("Error during malloc()");
 						exit(-1);
 					}
-					strcpy(plaintext, "logout");
+					IncControl(strlen("logout"));
+					strncpy(plaintext, "logout", strlen("logout")+1);
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
 					free(plaintext);
 					send_obj(sock, message_send, send_len);
