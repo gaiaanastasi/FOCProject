@@ -64,7 +64,7 @@ unsigned char* mappingIntToUser(unsigned int i){
 		perror("malloc");
 		exit(-1);
 	}
-	strncpy(ret, usernames[i],DIM_USERNAME);
+	strncpy(ret, usernames[i], DIM_USERNAME);
 	return ret;
 }
 
@@ -90,7 +90,6 @@ void initUsers(struct userStruct* users){
 			perror("pthread_mutex_init");
 			exit(-1);
 		}
-		//users[i].cpt_len = NULL;
 		username = mappingIntToUser(i);
 		if(!username){
 			perror("Error during mappintgIntToUser()");
@@ -249,6 +248,10 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 	}
 	sumControl(strlen(message), 1);
 	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
+	if(!sendMessage){
+		perror("Error during symmetric encryption");
+		exit(-1);
+	}
 	send_obj(sock, sendMessage, send_len);
 	free(sendMessage);	
 }
@@ -284,6 +287,10 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		if(!buffer){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		send_obj(sock, buffer, bufferLen);
 		free(message);
 		free(buffer);
@@ -309,11 +316,16 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		if(!buffer){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		send_obj(sock, buffer, bufferLen);
 		free(message);
 		free(buffer);
 		users[intSender].busy = false;
 		pthread_mutex_unlock(&users[intSender].userMutex);
+		free(requestString);
 		return NULL;
 	}
 	free(requestString);
@@ -336,6 +348,10 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		if(!buffer){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		send_obj(sock, buffer, bufferLen);
 		free(message);
 		free(buffer);
@@ -355,6 +371,10 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "not_online", strlen("not_online")+1);
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		if(!buffer){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		send_obj(sock, buffer, bufferLen);
 		free(message);
 		free(buffer);
@@ -374,6 +394,10 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "busy", strlen("busy")+1);
 		IncControl(strlen(message));
 		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		if(!buffer){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		send_obj(sock, buffer, bufferLen);
 		free(message);
 		free(buffer);
@@ -427,9 +451,15 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 			strncpy(message, "refused", strlen("refused")+1);
 			IncControl(strlen(message));
 			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+			if(!buffer){
+				perror("Error during symmetric encryption");
+				exit(-1);
+			}
 			send_obj(sock, buffer, bufferLen);
 			users[intSender].busy = false;
 			free(answer);
+			free(message);
+			free(buffer);
 			return NULL;
 		}
 	}
@@ -477,6 +507,11 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 	//receiving the answer
 	receive_obj(sock, buffer, bufferLen);
 	message = symmetricDecription(buffer, bufferLen, &messageLen, simKey);
+	if(!message){
+		perror("Error during symmetric encryption");
+		exit(-1);
+	}
+	free(buffer);
 	answer = (unsigned char*) malloc(2);
 	if(!answer){
 		perror("Error during malloc()");
@@ -538,6 +573,10 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 			receive_obj(socket_com, message, messageLen);
 			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
 			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
+			if(!plaintext){
+				perror("Error during symmetric decryption");
+				exit(-1);
+			}
 			if(strcmp(plaintext, "<exit>") == 0){
 				//The connected client wants to exit
 				printf("The client wants to exit\n");
@@ -569,6 +608,10 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 			}
 			//If it is not "<exit>" I have to forward it to the connected client
 			message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen);
+			if(!message){
+				perror("Error during symmetric encryption");
+				exit(-1);
+			}
 			send_obj(socket_com, message, messageLen);
 			free(message);
 			free(plaintext);
@@ -634,6 +677,7 @@ void handle_auth(int sock){
 	
 	
 	OPENSSL_free(cert_buf);
+	X509_free(cert);
 	send_obj(sock, msg, size_msg);
 	printf("Certificate and nonce sent to the client \n");
 }
@@ -687,6 +731,7 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 		perror("Error during the asimmetric decryption\n");
 		exit(-1);
 	}
+	free(buf);
 	//The plaintext has the format { <clientNonce> | <serverNonce> | <ClientDHPublicKey> | <signature> }
 	subControlInt(pt_len, signatureLen);
 	signature = (unsigned char*) malloc(signatureLen);
@@ -815,6 +860,7 @@ unsigned char* establishDHExhange(int sock, unsigned char* username, struct user
 	EVP_PKEY_free(DHClientPubK);
 	EVP_PKEY_free(dhPrivateKey);
 	EVP_PKEY_free(clientPubK);
+	EVP_PKEY_free(myPrivK);
 	dimOpBuffer = 0;
 	free(message_recv);
 	recv_len = 0;
@@ -941,6 +987,10 @@ int main (int argc, const char** argv){
 						}
 						receive_obj(socket_com, recv_message, recv_len);
 						plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
+						if(!plaintext){
+							perror("Error during symmetric decryption");
+							exit(-1);
+						}
 						if(strcmp(plaintext, "online_people") == 0)
 							getOnlineUser(socket_com, users, myUser, simKey);
 						else if(strcmp(plaintext, "logout") == 0){
@@ -966,6 +1016,7 @@ int main (int argc, const char** argv){
 								}
 								send_obj(socket_com, buffer, bufferLen);
 								free(buffer);
+								EVP_PKEY_free(communicatingClient_pubkey);
 							}
 						}
 						free(plaintext);
@@ -991,6 +1042,7 @@ int main (int argc, const char** argv){
 							send_obj(socket_com, buffer, bufferLen);
 							free(buffer);
 							free(plaintext);
+							EVP_PKEY_free(communicatingClient_pubkey);
 						}
 					}
 				}
@@ -1003,6 +1055,7 @@ int main (int argc, const char** argv){
 						waitingRequest = true;
 						waitingMessage = false;
 					}
+					free(communicatingClient);
 				}
 			}
 			pthread_mutex_lock(&users[intMyUser].userMutex);
@@ -1017,5 +1070,6 @@ int main (int argc, const char** argv){
 			close(socket_com);
 		}
 	}
+	munmap(users, TOT_USERS*(sizeof(struct userStruct)));
 	close(socket_ascolto);
 }

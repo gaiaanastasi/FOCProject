@@ -65,6 +65,10 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		}
 		receive_obj(sock, message, msg_len);
 		plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey);
+		if(!plaintext){
+			perror("Error during symmetric encryption");
+			exit(-1);
+		}
 		memcpy(clientNonce, plaintext, DIM_NONCE);
 		free(plaintext);
 		free(message);
@@ -146,10 +150,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			perror("Error during asymmetric encryption");
 			exit(-1);
 		}
-	#pragma optimize("", off);
-		memset(plaintext, 0, pt_len);
-	#pragma optimize("", on);
-		free(plaintext);
 		//opBuffer contains a message { <client_nonce> | <myNonce> | <serializedDHPublicKey> } encrypted by means of the client public key
 		message_send = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &send_len);
 		if(!message_send){
@@ -186,10 +186,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			perror("Error during asymmetric encryption");
 			exit(-1);
 		}
-	#pragma optimize("", off);
-		memset(plaintext, 0, pt_len);
-	#pragma optimize("", on);
-		free(plaintext);
 		//I created a message { <client_nonce> | <myNonce> | <serializedDHPublicKey> } encrypted by means of the client public key
 		message_send = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &send_len);
 		if(!message_send){
@@ -218,6 +214,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		free(receive);
+		free(opBuffer);
 		dimOpBuffer = DIM_NONCE;
 		opBuffer = (unsigned char*) malloc(dimOpBuffer);
 		if(opBuffer == NULL){
@@ -371,6 +368,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			printf("%s\n", plaintext);
 			free(plaintext);
 			free(message);
+			free(opBuffer);
 			pt_len = msg_len = 0;
 		}
 	}
@@ -394,7 +392,6 @@ int main(int argc, const char** argv){
 	unsigned char* plaintext;
 	int pt_len = 0;			//length of the plaintext
 	unsigned char* serverSymmetricKey;
-	unsigned char* clientSimmetricKey;
 	unsigned char serverNonce[DIM_NONCE];		//fresh nonce used for communication with the server
 	unsigned char myNonce[DIM_NONCE];
 	X509* serverCertificate = NULL;
@@ -600,6 +597,8 @@ int main(int argc, const char** argv){
 	//At first I have to send the length of the signature
 	send_int(sock, signatureLen);
 	send_obj(sock, message_send, send_len);
+	free(message_send);
+	free(charPointer);
 	
 	//RECEIVING DH PUBLIC KEY OF THE SERVER
 	signatureLen = receive_len(sock);
@@ -717,6 +716,10 @@ int main(int argc, const char** argv){
 					IncControl(strlen("online_people"));
 					strncpy(plaintext, "online_people", strlen("online_people")+1);
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					if(!message_send){
+						perror("Error during symmetric encryption");
+						exit(-1);
+					}
 					free(plaintext);
 					send_obj(sock, message_send, send_len);
 					recv_len = receive_len(sock);
@@ -727,6 +730,10 @@ int main(int argc, const char** argv){
 					}
 					receive_obj(sock, message_recv, recv_len);
 					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					if(!plaintext){
+						perror("Error during symmetric encryption");
+						exit(-1);
+					}
 					printf("%s", plaintext);
 					free(message_recv);
 					free(message_send);
@@ -845,6 +852,10 @@ int main(int argc, const char** argv){
 					IncControl(strlen("logout"));
 					strncpy(plaintext, "logout", strlen("logout")+1);
 					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					if(!message_send){
+						perror("Error during symmetric encryption");
+						exit(-1);
+					}
 					free(plaintext);
 					send_obj(sock, message_send, send_len);
 					continueWhile = 0;
@@ -950,6 +961,7 @@ int main(int argc, const char** argv){
 			}
 		}
 	}
+	free(serverSymmetricKey);
 	EVP_PKEY_free(myPrivK);
 	X509_STORE_free(certStore);
 	close(sock);
