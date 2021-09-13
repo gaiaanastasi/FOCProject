@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <termios.h>
 
-#define TOT_USERS 2
+#define TOT_USERS 8
 #define DIM_PASSWORD 32
 
 int receive_len (int socket_com){
@@ -41,6 +41,16 @@ void receive_obj (int socket_com, unsigned char* buf, int dim_buf){
 	}
 }
 
+void send_int(int sock, size_t len){
+	uint32_t dim_obj = htonl(len);
+	ssize_t no_err;
+	//send the message length first
+	no_err = send (sock, &dim_obj, sizeof(uint32_t), 0);		
+	if(no_err == -1 || no_err < sizeof(uint32_t)){
+		perror("send lunghezza dell'oggetto");	
+		exit(-1);
+	}
+}
 
 void send_obj (int sock, unsigned char* buf, size_t len){		
 //Send the message via socket
@@ -74,12 +84,7 @@ void extract_data_from_array(unsigned char* dest, unsigned char* src, int start,
 		perror("integer overflow");
 		dest = NULL;
 		return;
-	}
-	/*for(i = start; i < end; i++){
-		dest[j] = src[i];
-		j++;
-	}*/
-	
+	}	
 	memset(dest, 0, end-start);
 	memcpy(dest, src+start, end-start);
 }
@@ -106,9 +111,17 @@ void subControlInt(int a, int b){
 	
 }
 
+void IncControl(int a){
+	if (a==INT_MAX){
+		perror("integer overflow");
+		exit(-1);
+	}
+}
+
 bool comparisonUnsignedChar (unsigned char* src1, unsigned char* src2, int len){
 	for (int i = 0; i<len; i++){
 		if(src1[i] != src2[i]) return false;
+		IncControl(i);
 	}
 	return true;
 }

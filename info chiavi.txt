@@ -1,5 +1,11 @@
 Utente - Password privkey
 gaia        gaia
 matteo      matteo
+leonardo	leonardo
+lorenzo		lorenzo
+clarissa	clarissa
+irene		irene
+elisa		elisa
+luca		luca
 server      server
 CA          project
