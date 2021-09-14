@@ -550,26 +550,31 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 
 void forwardAnInt(unsigned char* receiver, int message, struct userStruct* users){
 	int intReceiver;
+	int size;
 	intReceiver = mappingUserToInt(receiver);
 	if(intReceiver == -1){
 		perror("Error during mappingUserToInt()");
 		exit(-1);
 	}
 	pthread_mutex_lock(&users[intReceiver].userMutex);
-	write(users[intReceiver].messagePipe[writePipe], (void*)&message, sizeof(int));
+	write(users[intReceiver].messagePipe[writePipe], &message, sizeof(int));
+	size = sizeof(int);
+	write(users[intReceiver].lenPipe[writePipe], &size, sizeof(int));
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 }
 
 int readAnInt(unsigned char* receiver, struct userStruct* users){
 	int intReceiver;
 	int ret;
+	int size;
 	intReceiver = mappingUserToInt(receiver);
 	if(intReceiver == -1){
 		perror("Error during mappingUserToInt()");
 		exit(-1);
 	}
 	pthread_mutex_lock(&users[intReceiver].userMutex);
-	read(users[intReceiver].messagePipe[readPipe], (void*)&ret, sizeof(int));
+	read(users[intReceiver].lenPipe[readPipe], &size, sizeof(int));
+	read(users[intReceiver].messagePipe[readPipe], &ret, sizeof(int));
 	pthread_mutex_unlock(&users[intReceiver].userMutex);
 	return ret;
 }
@@ -608,93 +613,85 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		}
 		if(FD_ISSET(socket_com, &recv_set)){
 			//A new message sent from the connected client is arrived
-			if(requestingClient){
-				IncControl(contaMessaggiSock);
-				contaMessaggiSock++;
+			contaMessaggiSock++;
+			if(requestingClient && contaMessaggiSock == 2){
 				if(contaMessaggiSock == 2){
 					sigLen = receive_len(socket_com);
 					forwardAnInt(communicatingClient, sigLen, users);
 				}
-			} else {
-				IncControl(contaMessaggiSock);
-				contaMessaggiSock++;
+			} else if(!requestingClient && contaMessaggiSock == 1){
 				if(contaMessaggiSock == 1){
 					sigLen = receive_len(socket_com);
 					forwardAnInt(communicatingClient, sigLen, users);
 				}
-			}
-			messageLen = receive_len(socket_com);
-			message = (unsigned char*) malloc(messageLen);
-			if(!message){
-				perror("Error during malloc()");
-				exit(-1);
-			}
-			receive_obj(socket_com, message, messageLen);
-			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
-			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey, &counter_recv_client);
-			if(!plaintext){
-				perror("Error during symmetric decryption");
-				exit(-1);
-			}
-			if(strcmp(plaintext, "<exit>") == 0){
-				//The connected client wants to exit
-				printf("The client wants to exit\n");
-				free(message);
-				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
-				free(plaintext);
-				pthread_mutex_lock(&users[intMyUser].userMutex);
-				users[intMyUser].busy = false;
-				pthread_mutex_unlock(&users[intMyUser].userMutex);
-				return true;
-			}
-			else{
-				forwardMessage(communicatingClient, plaintext, pt_len, users, false);
-				free(plaintext);
-				free(message);
+			} else{
+				messageLen = receive_len(socket_com);
+				message = (unsigned char*) malloc(messageLen);
+				if(!message){
+					perror("Error during malloc()");
+					exit(-1);
+				}
+				receive_obj(socket_com, message, messageLen);
+				//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
+				plaintext = symmetricDecription(message, messageLen, &pt_len, simKey, &counter_recv_client);
+				if(!plaintext){
+					perror("Error during symmetric decryption");
+					exit(-1);
+				}
+				if(strcmp(plaintext, "<exit>") == 0){
+					//The connected client wants to exit
+					printf("The client wants to exit\n");
+					free(message);
+					forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+					free(plaintext);
+					pthread_mutex_lock(&users[intMyUser].userMutex);
+					users[intMyUser].busy = false;
+					pthread_mutex_unlock(&users[intMyUser].userMutex);
+					return true;
+				}
+				else{
+					forwardMessage(communicatingClient, plaintext, pt_len, users, false);
+					free(plaintext);
+					free(message);
+				}
 			}
 		}
 		else if(FD_ISSET(users[intMyUser].messagePipe[readPipe], &recv_set)){
 			//A new message destinated to the connected client is arrived
-			
-			if(requestingClient){
-				IncControl(contaMessaggiPipe);
-				contaMessaggiPipe++;
+			contaMessaggiPipe++;
+			if(requestingClient && contaMessaggiPipe == 1){
 				if(contaMessaggiPipe == 1){
-					printf("faccio send_int\n");
-					send_int(socket_com, readAnInt(myUser, users));
-					printf("fatta\n");
+					sigLen = readAnInt(myUser, users);
+					send_int(socket_com, sigLen);
 				}
 			}
-			if((!requestingClient)){
-				IncControl(contaMessaggiPipe);
-				contaMessaggiPipe++;
+			else if((!requestingClient) && contaMessaggiPipe == 2){
 				if(contaMessaggiPipe == 2){
-					printf("faccio send_int\n");
-					send_int(socket_com, readAnInt(myUser, users));
-					printf("fatta\n");
+					sigLen = readAnInt(myUser, users);
+					send_int(socket_com, sigLen);
 				}
 			}
-			printf("read a message\n");
-			plaintext = readAMessage(myUser, &pt_len, users, false);
-			printf("read a message fatta\n");
-			//I have to control if the message is "<exit>". If it is so, it means that the other client has already communicated to the connected client
-			//that he wants to exit and now it is communicating the same thing to the server
-			if(strcmp(plaintext, "<exit>") == 0){
-				pthread_mutex_lock(&users[intMyUser].userMutex);
-				users[intMyUser].busy = false;
-				pthread_mutex_unlock(&users[intMyUser].userMutex);
+			else{
+				plaintext = readAMessage(myUser, &pt_len, users, false);
+				//I have to control if the message is "<exit>". If it is so, it means that the other client has already communicated to the connected client
+				//that he wants to exit and now it is communicating the same thing to the server
+				if(strcmp(plaintext, "<exit>") == 0){
+					pthread_mutex_lock(&users[intMyUser].userMutex);
+					users[intMyUser].busy = false;
+					pthread_mutex_unlock(&users[intMyUser].userMutex);
+					free(plaintext);
+					return false;
+				}
+				//If it is not "<exit>" I have to forward it to the connected client
+				message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen, &counter_send_client);
+				if(!message){
+					perror("Error during symmetric encryption");
+					exit(-1);
+				}
+				send_obj(socket_com, message, messageLen);
+				free(message);
 				free(plaintext);
-				return false;
 			}
-			//If it is not "<exit>" I have to forward it to the connected client
-			message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen, &counter_send_client);
-			if(!message){
-				perror("Error during symmetric encryption");
-				exit(-1);
-			}
-			send_obj(socket_com, message, messageLen);
-			free(message);
-			free(plaintext);
 		}
 	}
 }

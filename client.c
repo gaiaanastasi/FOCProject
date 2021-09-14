@@ -46,7 +46,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	unsigned char* signature;
 	int signatureLen;
 	fd_set readSet;					//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
-	printf("funz comunicazione\n");
 	clientPubK = deserializePublicKey(serializedPubKey, keyLen);
 	if(clientPubK == NULL){
 		perror("Error during deserialization of the public key");
@@ -79,22 +78,17 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		free(plaintext);
 		free(message);
 	}
-	printf("primo nonce fatto\n");
 	dhPrivateKey = generateDHParams();
 	if(requestingClient){
 		//I have to wait until the nonce of the other client arrives 
-		printf("arriva len\n");
 		signatureLen = receive_len(sock);
-		printf("arriva mess\n");
 		recv_len = receive_len(sock);
 		receive = (unsigned char*) malloc(recv_len);
 		if(receive == NULL){
 			perror("Error during malloc()");
 			exit(-1);
 		}
-		printf("in attesa di mess\n");
 		receive_obj(sock, receive, recv_len);
-		printf("mess arrivato\n");
 		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey, &counter_recv_server);
 		if(!opBuffer){
 			perror("Error during symmetric encryption");
@@ -253,9 +247,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		send_obj(sock, message_send, send_len);
 		free(opBuffer);
 		free(message_send);
-		printf("arriva lunghezza\n");
 		signatureLen = receive_len(sock);
-		printf("arriva mess\n");
 		recv_len = receive_len(sock);
 		receive = (unsigned char*) malloc(recv_len);
 		if(receive == NULL){
@@ -263,7 +255,6 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		receive_obj(sock, receive, recv_len);
-		printf("mess arrivato\n");
 		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey, &counter_recv_server);
 		if(!opBuffer){
 			perror("Error during symmetric encryption");
@@ -337,6 +328,8 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 
 	//the user can both wait for a new message or type its own message to send it to the other user
 	while(1){
+		counter_send_client = 0;
+		counter_recv_client = 0;
 		FD_ZERO(&readSet);		//cleaning the set
 		FD_SET(0, &readSet);		//stdin added to the set
 		FD_SET(sock, &readSet);		//sock added to the set
@@ -875,9 +868,7 @@ int main(int argc, const char** argv){
 						perror("Error during malloc()");
 						exit(-1);
 					}
-					printf("ricevo risposta\n");
 					receive_obj(sock, message_recv, recv_len);
-					printf("ricevo risposta\n");
 					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 					printf("risposta ricevuta\n");
 					if(plaintext == NULL){
@@ -1018,9 +1009,7 @@ int main(int argc, const char** argv){
 				exit(-1);
 			}
 			//send the message formatted like { <"y"/"n"> | <username that sent the request> }
-			printf("invio rispost\n");
 			send_obj(sock, message_send, send_len);
-			printf("risposta inviata\n");
 			//I can use strcmp with plaintext because it contains for sure the '\0' character in position plaintext[1]
 			free(message_send);
 			free(message_recv);
@@ -1033,9 +1022,7 @@ int main(int argc, const char** argv){
 					perror("Error during malloc()");
 					exit(-1);
 				}
-				printf("ricevo chiave\n");
 				receive_obj(sock, message_recv, recv_len);
-				printf("chiave ricevuta\n");
 				//the message sent by the server contains the public key of the other client, encrypted by means of the simmetric key used by server and client
 				plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 				if(plaintext == NULL){
