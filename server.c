@@ -548,6 +548,32 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 	}
 }
 
+void forwardAnInt(unsigned char* receiver, int message, struct userStruct* users){
+	int intReceiver;
+	intReceiver = mappingUserToInt(receiver);
+	if(intReceiver == -1){
+		perror("Error during mappingUserToInt()");
+		exit(-1);
+	}
+	pthread_mutex_lock(&users[intReceiver].userMutex);
+	write(users[intReceiver].messagePipe[writePipe], (void*)&message, sizeof(int));
+	pthread_mutex_unlock(&users[intReceiver].userMutex);
+}
+
+int readAnInt(unsigned char* receiver, struct userStruct* users){
+	int intReceiver;
+	int ret;
+	intReceiver = mappingUserToInt(receiver);
+	if(intReceiver == -1){
+		perror("Error during mappingUserToInt()");
+		exit(-1);
+	}
+	pthread_mutex_lock(&users[intReceiver].userMutex);
+	read(users[intReceiver].messagePipe[readPipe], (void*)&ret, sizeof(int));
+	pthread_mutex_unlock(&users[intReceiver].userMutex);
+	return ret;
+}
+
 //Function that handles the forwarding of messages from a client to another one. It returns true if the connected username wanted to exit, false otherwise
 bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned char* myUser, unsigned char* simKey, unsigned char* communicatingClient, bool requestingClient){
 	fd_set recv_set;
@@ -556,8 +582,11 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 	int messageLen;
 	unsigned char* plaintext;
 	int pt_len;
-	int contaMessaggi = 0;
+	int contaMessaggiSock = 0;	//messages arrived through the socket
+	int contaMessaggiPipe = 0;	//messages arrived in the pipe
 	int intMyUser = mappingUserToInt(myUser);
+	unsigned char* charSigLen;	//len of the signature
+	int sigLen;
 	if(intMyUser < 0){
 		perror("Error during mappingUserToInt()");
 		exit(-1);
@@ -580,16 +609,18 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		if(FD_ISSET(socket_com, &recv_set)){
 			//A new message sent from the connected client is arrived
 			if(requestingClient){
-				IncControl(contaMessaggi);
-				contaMessaggi++;
-				if(contaMessaggi == 2){
-					send_int(receive_len(socket_com));
+				IncControl(contaMessaggiSock);
+				contaMessaggiSock++;
+				if(contaMessaggiSock == 2){
+					sigLen = receive_len(socket_com);
+					forwardAnInt(communicatingClient, sigLen, users);
 				}
-			} else{
-				IncControl(contaMessaggi);
-				contaMessaggi++;
-				if(contaMessaggi == 1){
-					send_int(receive_len(socket_com));
+			} else {
+				IncControl(contaMessaggiSock);
+				contaMessaggiSock++;
+				if(contaMessaggiSock == 1){
+					sigLen = receive_len(socket_com);
+					forwardAnInt(communicatingClient, sigLen, users);
 				}
 			}
 			messageLen = receive_len(socket_com);
@@ -624,7 +655,28 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		}
 		else if(FD_ISSET(users[intMyUser].messagePipe[readPipe], &recv_set)){
 			//A new message destinated to the connected client is arrived
+			
+			if(requestingClient){
+				IncControl(contaMessaggiPipe);
+				contaMessaggiPipe++;
+				if(contaMessaggiPipe == 1){
+					printf("faccio send_int\n");
+					send_int(socket_com, readAnInt(myUser, users));
+					printf("fatta\n");
+				}
+			}
+			if((!requestingClient)){
+				IncControl(contaMessaggiPipe);
+				contaMessaggiPipe++;
+				if(contaMessaggiPipe == 2){
+					printf("faccio send_int\n");
+					send_int(socket_com, readAnInt(myUser, users));
+					printf("fatta\n");
+				}
+			}
+			printf("read a message\n");
 			plaintext = readAMessage(myUser, &pt_len, users, false);
+			printf("read a message fatta\n");
 			//I have to control if the message is "<exit>". If it is so, it means that the other client has already communicated to the connected client
 			//that he wants to exit and now it is communicating the same thing to the server
 			if(strcmp(plaintext, "<exit>") == 0){
@@ -974,6 +1026,7 @@ int main (int argc, const char** argv){
 	EVP_PKEY* communicatingClient_pubKey;	//public key of the user that accepted to talk with the connected client
 	unsigned char* buffer;
 	int bufferLen;
+	bool requestingUser;	//true if the connected used is the client that requested to talk
 	while(1){
 		socket_com = accept(socket_ascolto, (struct sockaddr*)&indirizzo_client, &size );
 		pid = fork();
@@ -1029,6 +1082,7 @@ int main (int argc, const char** argv){
 							communicatingClient = handle_send_request(socket_com, plaintext, pt_len, users, myUser, simKey);
 							if(communicatingClient != NULL){
 								free(plaintext);
+								requestingUser = true;
 								waitingMessage = true;
 								waitingRequest = false;
 								communicatingClient_pubKey = getUserPbkey(communicatingClient);
@@ -1054,6 +1108,7 @@ int main (int argc, const char** argv){
 						//A new request is arrived
 						communicatingClient = handle_recv_request(socket_com, users, myUser, simKey);
 						if(communicatingClient != NULL){
+							requestingUser = false;
 							waitingMessage = true;
 							waitingRequest = false;
 							communicatingClient_pubKey = getUserPbkey(communicatingClient);
@@ -1076,12 +1131,13 @@ int main (int argc, const char** argv){
 				}
 				if(waitingMessage){
 					//The user has accepted a request to talk
-					if(handle_forward_messages(socket_com, users, myUser, simKey, communicatingClient) == true){
+					if(handle_forward_messages(socket_com, users, myUser, simKey, communicatingClient, requestingUser) == true){
 						//myUser wants to exit, I can delete the connection
 						waitingMessage = waitingRequest = false;
 					} else{
 						waitingRequest = true;
 						waitingMessage = false;
+						requestingUser = false;
 					}
 					free(communicatingClient);
 				}

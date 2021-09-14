@@ -537,6 +537,7 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
     int ret;
 	unsigned char* iv;
 	unsigned char* aad;
+	int intAAD;
 	unsigned char* tag;
 	unsigned char* ciphertext;
 	int ciphertext_len = bufferLen - DIM_IV - DIM_AAD - DIM_TAG;
@@ -557,7 +558,8 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_IV + DIM_AAD);
 	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_IV + DIM_AAD + DIM_TAG);
 	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, bufferLen);
-	if(atoi(aad) != expectedAAD){
+	intAAD = atoi(aad);
+	if(intAAD != *expectedAAD){
 		perror("The two counters are different");
 		exit(-1);
 	}
