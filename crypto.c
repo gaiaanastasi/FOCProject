@@ -463,7 +463,7 @@ unsigned char* from_DigEnv_to_PlainText(unsigned char* message, int messageLen, 
 }
 
 //function that takes a plaintext and returns a buffer that has the format { <IV> | <AAD> | <tag> | <ciphertext> }. It returns NULL in case of error
-unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen)
+unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, unsigned char *key, int *totalLen, int* counter)
 {
     EVP_CIPHER_CTX *ctx;
     int len = 0;
@@ -479,10 +479,10 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 		perror("malloc");
 		exit(-1);
 	}
+	sprintf(AAD, "%d", *counter);
+	IncControl(*counter);
+	(*counter)++;
 	ret = RAND_bytes(&iv[0], DIM_IV);
-	if (ret!=1)
-		return NULL;
-	ret = RAND_bytes(&AAD[0], DIM_AAD);
 	if (ret!=1)
 		return NULL;
 	ctx = EVP_CIPHER_CTX_new();
@@ -530,7 +530,7 @@ unsigned char* symmetricEncryption(unsigned char *plaintext, int plaintext_len, 
 }
 
 //function that takes a buffer formatted as { <IV> | <AAD> | <tag> | <ciphertext> } and return the plaintext. It returns NULL in case of error
-unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, int *plaintext_len, unsigned char* key)
+unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, int *plaintext_len, unsigned char* key, int* expectedAAD)
 {
     EVP_CIPHER_CTX *ctx;
     int len;
@@ -557,6 +557,12 @@ unsigned char* symmetricDecription(unsigned char *recv_buffer, int bufferLen, in
 	extract_data_from_array(aad, recv_buffer, DIM_IV, DIM_IV + DIM_AAD);
 	extract_data_from_array(tag, recv_buffer, DIM_IV + DIM_AAD, DIM_IV + DIM_AAD + DIM_TAG);
 	extract_data_from_array(ciphertext, recv_buffer, DIM_IV + DIM_AAD + DIM_TAG, bufferLen);
+	if(atoi(aad) != expectedAAD){
+		perror("The two counters are different");
+		exit(-1);
+	}
+	IncControl(*expectedAAD);
+	(*expectedAAD)++;
 
     if(!(ctx = EVP_CIPHER_CTX_new()))
         return NULL;

@@ -16,6 +16,10 @@
 const int port_address = 4242;
 const char ip_address[16] = "127.0.0.1";
 const int MAX_LEN_MESSAGE = 10000;
+int counter_send_server = 0;
+int counter_recv_server = 0;
+int counter_send_client = 0;
+int counter_recv_client = 0;
 
 
 //Function that control the communication with another client. If requestingClient is true, it means that the client that called the function
@@ -39,6 +43,8 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	int msg_len = 0;				//length of the message to be sent
 	unsigned char* simKey;			//simmetric key used by the two clients
 	unsigned char* charPointer;		//generic char pointer 
+	unsigned char* signature;
+	int signatureLen;
 	fd_set readSet;					//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 
 	clientPubK = deserializePublicKey(serializedPubKey, keyLen);
@@ -48,7 +54,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	}
 	generateNonce(myNonce);
 	if(requestingClient){
-		message = symmetricEncryption(myNonce, DIM_NONCE, serverSimKey, &msg_len);
+		message = symmetricEncryption(myNonce, DIM_NONCE, serverSimKey, &msg_len, &counter_send_server);
 		if(!message){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -64,7 +70,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		receive_obj(sock, message, msg_len);
-		plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey);
+		plaintext = symmetricDecription(message, msg_len, &pt_len, serverSimKey, &counter_recv_server);
 		if(!plaintext){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -76,6 +82,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 	dhPrivateKey = generateDHParams();
 	if(requestingClient){
 		//I have to wait until the nonce of the other client arrives 
+		signatureLen = receive_len(sock);
 		recv_len = receive_len(sock);
 		receive = (unsigned char*) malloc(recv_len);
 		if(receive == NULL){
@@ -83,18 +90,36 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		receive_obj(sock, receive, recv_len);
-		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey);
+		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey, &counter_recv_server);
 		if(!opBuffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
 		}
-		//opBuffer contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> } encrypted by means of my public key
-		plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
+		free(receive);
+		//opBuffer contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> | <signature> } 
+		/*plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
 		if(plaintext == NULL){
 			perror("Error during the asymmetric decription");
 			exit(-1);
+		}*/
+		signature = (unsigned char*) malloc(signatureLen);
+		if(!signature){
+			perror("Error during malloc()");
+			exit(-1);
 		}
-		free(receive);
+		extract_data_from_array(signature, opBuffer, dimOpBuffer - signatureLen, dimOpBuffer);
+		subControlInt(dimOpBuffer, signatureLen);
+		pt_len = dimOpBuffer - signatureLen;
+		plaintext = (unsigned char*) malloc(pt_len);
+		if(!plaintext){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		extract_data_from_array(plaintext, opBuffer, 0, pt_len);
+		if(!verifySignature(signature, plaintext, signatureLen, pt_len, clientPubK)){
+			perror("signature");
+			exit(-1);
+		}
 		sumControl(DIM_NONCE, DIM_NONCE);
 		extract_data_from_array(clientNonce, plaintext, DIM_NONCE, DIM_NONCE + DIM_NONCE);
 		receive = (unsigned char*) malloc(DIM_NONCE);
@@ -108,6 +133,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		free(receive);
+		free(opBuffer);
 		subControlInt(pt_len, DIM_NONCE);
 		subControlInt(pt_len - DIM_NONCE, DIM_NONCE);
 		dimOpBuffer = pt_len - DIM_NONCE - DIM_NONCE;
@@ -125,7 +151,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		}
 		free(opBuffer);
 		free(plaintext);
-		//creation of the message that must be sent to the client. Formatted as { <client_nonce> | <myNonce> | <DHPubkey> }
+		//creation of the message that must be sent to the client. Formatted as { <client_nonce> | <myNonce> | <DHPubkey> | <signature> }
 		opBuffer = serializePublicKey(dhPrivateKey, &dimOpBuffer);
 		if(opBuffer == NULL){
 			perror("Error during the serialization of the key");
@@ -145,20 +171,31 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		concatElements(plaintext, opBuffer, DIM_NONCE + DIM_NONCE, dimOpBuffer);
 		free(opBuffer);
 		dimOpBuffer = 0;
-		opBuffer = from_pt_to_DigEnv(plaintext, pt_len, clientPubK, &dimOpBuffer);
-		if(opBuffer == NULL){
-			perror("Error during asymmetric encryption");
+		opBuffer = (unsigned char*) malloc(EVP_PKEY_size(myPrivK));
+		if(!opBuffer){
+			perror("Error during malloc()");
 			exit(-1);
 		}
-		//opBuffer contains a message { <client_nonce> | <myNonce> | <serializedDHPublicKey> } encrypted by means of the client public key
-		message_send = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &send_len);
+		signatureFunction(plaintext, pt_len, opBuffer, &dimOpBuffer, myPrivK);
+		sumControl(dimOpBuffer, pt_len);
+		msg_len = dimOpBuffer + pt_len);
+		message = (unsigned char*) malloc(dimOpBuffer + pt_len);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		concat2Elements(message, plaintext, opBuffer, pt_len, dimOpBuffer);
+		//message contains { <clientNonce> | <myNonce> | <DHPublicKey> | <signature> }
+		message_send = symmetricEncryption(message, msg_len, serverSimKey, &send_len, &counter_send_server);
 		if(!message_send){
 			perror("Error during symmetric encryption");
 			exit(-1);
 		}
+		send_int(dimOpBuffer);
 		send_obj(sock, message_send, send_len);
 		free(opBuffer);
 		free(message_send);
+		free(message);
 	} 
 	else{
 		//I have to send the message first
@@ -181,20 +218,37 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 		concatElements(plaintext, opBuffer, DIM_NONCE + DIM_NONCE, dimOpBuffer);
 		free(opBuffer);
 		dimOpBuffer = 0;
-		opBuffer = from_pt_to_DigEnv(plaintext, pt_len, clientPubK, &dimOpBuffer);
+		/*opBuffer = from_pt_to_DigEnv(plaintext, pt_len, clientPubK, &dimOpBuffer);
 		if(opBuffer == NULL){
 			perror("Error during asymmetric encryption");
 			exit(-1);
 		}
-		//I created a message { <client_nonce> | <myNonce> | <serializedDHPublicKey> } encrypted by means of the client public key
-		message_send = symmetricEncryption(opBuffer, dimOpBuffer, serverSimKey, &send_len);
+		//I created a message { <client_nonce> | <myNonce> | <serializedDHPublicKey> } encrypted by means of the client public key*/
+		opBuffer = (unsigned char*) malloc(EVP_PKEY_size(myPrivK));
+		if(!opBuffer){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		signatureFunction(plaintext, pt_len, opBuffer, &dimOpBuffer, myPrivK);
+		sumControl(dimOpBuffer, pt_len);
+		msg_len = dimOpBuffer + pt_len);
+		message = (unsigned char*) malloc(dimOpBuffer + pt_len);
+		if(!message){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		concat2Elements(message, plaintext, opBuffer, pt_len, dimOpBuffer);
+		//message contains { <clientNonce> | <myNonce> | <DHPublicKey> | <signature> }
+		message_send = symmetricEncryption(message, msg_len, serverSimKey, &send_len, &counter_send_server);
 		if(!message_send){
 			perror("Error during symmetric encryption");
 			exit(-1);
 		}
+		send_int(sock, dimOpBuffer);
 		send_obj(sock, message_send, send_len);
 		free(opBuffer);
 		free(message_send);
+		signatureLen = receive_len(sock);
 		recv_len = receive_len(sock);
 		receive = (unsigned char*) malloc(recv_len);
 		if(receive == NULL){
@@ -202,17 +256,35 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			exit(-1);
 		}
 		receive_obj(sock, receive, recv_len);
-		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey);
+		opBuffer = symmetricDecription(receive, recv_len, &dimOpBuffer, serverSimKey, &counter_recv_server);
 		if(!opBuffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
 		}
-		//opBuffer contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> } encrypted by means of my public key
-		plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
+		signature = (unsigned char*) malloc(signatureLen);
+		if(!signature){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		extract_data_from_array(signature, opBuffer, dimOpBuffer - signatureLen, dimOpBuffer);
+		subControlInt(dimOpBuffer, signatureLen);
+		pt_len = dimOpBuffer - signatureLen;
+		plaintext = (unsigned char*) malloc(pt_len);
+		if(!plaintext){
+			perror("Error during malloc()");
+			exit(-1);
+		}
+		extract_data_from_array(plaintext, opBuffer, 0, pt_len);
+		if(!verifySignature(signature, plaintext, signatureLen, pt_len, clientPubK)){
+			perror("signature");
+			exit(-1);
+		}
+		//opBuffer contains a message { <myNonce> | <client_nonce> | <serializedDHPublicKey> | <signature>}
+		/*plaintext = from_DigEnv_to_PlainText(opBuffer, dimOpBuffer, &pt_len, myPrivK);
 		if(plaintext == NULL){
 			perror("Error during the asymmetric decription");
 			exit(-1);
-		}
+		}*/
 		free(receive);
 		free(opBuffer);
 		dimOpBuffer = DIM_NONCE;
@@ -286,12 +358,12 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				//the first time I send the message to the other client, to notify him that I'm leaving the chat
 				IncControl(strlen("<exit>"));
 				pt_len = strlen("<exit>") + 1;
-				message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
+				message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len, &counter_send_client);
 				if(message == NULL){
 					perror("Error during encryption of the message");
 					exit(-1);
 				}
-				opBuffer = symmetricEncryption(message, msg_len, serverSimKey, &dimOpBuffer);
+				opBuffer = symmetricEncryption(message, msg_len, serverSimKey, &dimOpBuffer, &counter_send_server);
 				if(!opBuffer){
 					perror("Error during symmetric encryption");
 					exit(-1);
@@ -302,7 +374,7 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				msg_len = 0;
 
 				//The second time I send the message to the server, to notify my log-off
-				message = symmetricEncryption(plaintext, pt_len, serverSimKey, &msg_len);
+				message = symmetricEncryption(plaintext, pt_len, serverSimKey, &msg_len, &counter_send_server);
 				if(message == NULL){
 					perror("Error during encryption of the message");
 					exit(-1);
@@ -316,12 +388,12 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 			//encryption and sending of the message
 			IncControl(strlen(plaintext));
 			pt_len = strlen(plaintext) + 1;
-			message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len);
+			message = symmetricEncryption(plaintext, pt_len, simKey, &msg_len, &counter_send_client);
 			if(message == NULL){
 				perror("Error during the encryption of the message");
 				exit(-1);
 			}
-			opBuffer = symmetricEncryption(message, msg_len, serverSimKey, &dimOpBuffer);
+			opBuffer = symmetricEncryption(message, msg_len, serverSimKey, &dimOpBuffer, &counter_send_server);
 			if(!opBuffer){
 				perror("Error during symmetric encryption");
 				exit(-1);
@@ -342,12 +414,12 @@ bool communication_with_other_client(int sock, unsigned char* serializedPubKey, 
 				exit(-1);
 			}
 			receive_obj(sock, message, msg_len);
-			opBuffer = symmetricDecription(message, msg_len, &dimOpBuffer, serverSimKey);
+			opBuffer = symmetricDecription(message, msg_len, &dimOpBuffer, serverSimKey, &counter_recv_server);
 			if(!opBuffer){
 				perror("Error during symmetric decryption");
 				exit(-1);
 			}
-			plaintext = symmetricDecription(opBuffer, dimOpBuffer, &pt_len, simKey);
+			plaintext = symmetricDecription(opBuffer, dimOpBuffer, &pt_len, simKey, &counter_recv_client);
 			if(plaintext == NULL){
 				perror("Error during the decription of the message");
 				exit(-1);
@@ -412,6 +484,7 @@ int main(int argc, const char** argv){
 	FILE* file = NULL;			//generic file pointer used in different parts of the code
 	fd_set readFdSet;			//fd set that will contain the socket and the stdin, in order to know if a request is arrived or if the user has typed something
 	int continueWhile = 1;		//it remains equal to 1 until the user decide to log out 
+
 
 	
 	//log in of the user
@@ -719,7 +792,7 @@ int main(int argc, const char** argv){
 					IncControl(strlen("online_people"));
 					strncpy(plaintext, "online_people", strlen("online_people")+1);
 					plaintext[strlen("online_people")]='\0';
-					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len, &counter_send_server);
 					if(!message_send){
 						perror("Error during symmetric encryption");
 						exit(-1);
@@ -733,7 +806,7 @@ int main(int argc, const char** argv){
 						exit(-1);
 					}
 					receive_obj(sock, message_recv, recv_len);
-					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 					if(!plaintext){
 						perror("Error during symmetric encryption");
 						exit(-1);
@@ -775,7 +848,7 @@ int main(int argc, const char** argv){
 					}
 					concat2Elements(plaintext, opBuffer, "request", DIM_USERNAME, strlen("request") + 1);
 					//message to be sent has the format { <requested_username> | "request" }
-					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len);
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len, &counter_send_server);
 					if(message_send == NULL){
 						perror("Error during the encryption of the message");
 						exit(-1);
@@ -795,7 +868,7 @@ int main(int argc, const char** argv){
 						exit(-1);
 					}
 					receive_obj(sock, message_recv, recv_len);
-					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 					if(plaintext == NULL){
 						perror("Error during the symmetric decription");
 						exit(-1);
@@ -881,7 +954,7 @@ int main(int argc, const char** argv){
 			}
 			receive_obj(sock, message_recv, recv_len);
 			//the message is encrypted by means of the symmetric key used by server and client
-			plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+			plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 			//the plaintext would have the format { <username that sent the request> | <"request"> }
 			if(plaintext == NULL){
 				perror("Error during the symmetric decription");
@@ -949,7 +1022,7 @@ int main(int argc, const char** argv){
 				}
 				receive_obj(sock, message_recv, recv_len);
 				//the message sent by the server contains the public key of the other client, encrypted by means of the simmetric key used by server and client
-				plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey);
+				plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
 				if(plaintext == NULL){
 					perror("Error during symmetric decription");
 					exit(-1);

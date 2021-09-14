@@ -23,6 +23,8 @@
 
 const int MAX_LEN_MESSAGE = 10000;
 char* server_port = "4242";
+int counter_send_client = 0;
+int counter_recv_client = 0;
 
 struct userStruct{
 	bool online;	//true if the user is online, false otherwise
@@ -253,7 +255,7 @@ void getOnlineUser (int sock, struct userStruct* users, unsigned char* myUsernam
 		message[strlen("\nYou are the only user that is currently online\n")] = '\0';
 	}
 	sumControl(strlen(message), 1);
-	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len);
+	sendMessage = symmetricEncryption(message, strlen(message) + 1, simKey, &send_len, &counter_send_client);
 	if(!sendMessage){
 		perror("Error during symmetric encryption");
 		exit(-1);
@@ -293,7 +295,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		message[strlen("wrong_format")] ='\0';
 		IncControl(strlen(message));
-		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 		if(!buffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -323,7 +325,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		message[strlen("wrong_format")] = '\0';
 		IncControl(strlen(message));
-		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 		if(!buffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -356,7 +358,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "wrong_format", strlen("wrong_format")+1);
 		message[strlen("wrong_format")] = '\0';
 		IncControl(strlen(message));
-		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 		if(!buffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -380,7 +382,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "not_online", strlen("not_online")+1);
 		message[strlen("not_online")] = '\0';
 		IncControl(strlen(message));
-		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 		if(!buffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -404,7 +406,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 		strncpy(message, "busy", strlen("busy")+1);
 		message[strlen("busy")] = '\0';
 		IncControl(strlen(message));
-		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+		buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 		if(!buffer){
 			perror("Error during symmetric encryption");
 			exit(-1);
@@ -462,7 +464,7 @@ unsigned char* handle_send_request(int sock, unsigned char* recv_message, int re
 			strncpy(message, "refused", strlen("refused")+1);
 			message[strlen("refused")] = '\0';
 			IncControl(strlen(message));
-			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen);
+			buffer = symmetricEncryption(message, strlen(message) + 1, simKey, &bufferLen, &counter_send_client);
 			if(!buffer){
 				perror("Error during symmetric encryption");
 				exit(-1);
@@ -501,7 +503,7 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 	}
 	extract_data_from_array(sender, message, 0, DIM_USERNAME);
 	intSender = mappingUserToInt(sender);
-	buffer = symmetricEncryption(message, messageLen, simKey, &bufferLen);
+	buffer = symmetricEncryption(message, messageLen, simKey, &bufferLen, &counter_send_client);
 	if(buffer == NULL){
 		perror("Error during symmetric encryption");
 		exit(-1);
@@ -518,7 +520,7 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 	}
 	//receiving the answer
 	receive_obj(sock, buffer, bufferLen);
-	message = symmetricDecription(buffer, bufferLen, &messageLen, simKey);
+	message = symmetricDecription(buffer, bufferLen, &messageLen, simKey, &counter_recv_client);
 	if(!message){
 		perror("Error during symmetric encryption");
 		exit(-1);
@@ -547,13 +549,14 @@ unsigned char* handle_recv_request(int sock, struct userStruct* users, unsigned 
 }
 
 //Function that handles the forwarding of messages from a client to another one. It returns true if the connected username wanted to exit, false otherwise
-bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned char* myUser, unsigned char* simKey, unsigned char* communicatingClient){
+bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned char* myUser, unsigned char* simKey, unsigned char* communicatingClient, bool requestingClient){
 	fd_set recv_set;
 	int greatest, ret;
 	unsigned char* message;
 	int messageLen;
 	unsigned char* plaintext;
 	int pt_len;
+	int contaMessaggi = 0;
 	int intMyUser = mappingUserToInt(myUser);
 	if(intMyUser < 0){
 		perror("Error during mappingUserToInt()");
@@ -576,6 +579,19 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 		}
 		if(FD_ISSET(socket_com, &recv_set)){
 			//A new message sent from the connected client is arrived
+			if(requestingClient){
+				IncControl(contaMessaggi);
+				contaMessaggi++;
+				if(contaMessaggi == 2){
+					send_int(receive_len(socket_com));
+				}
+			} else{
+				IncControl(contaMessaggi);
+				contaMessaggi++;
+				if(contaMessaggi == 1){
+					send_int(receive_len(socket_com));
+				}
+			}
 			messageLen = receive_len(socket_com);
 			message = (unsigned char*) malloc(messageLen);
 			if(!message){
@@ -584,7 +600,7 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 			}
 			receive_obj(socket_com, message, messageLen);
 			//I have to try to decrypt the message with my simKey. If the message is encrypted by means of my simKey, the message will be "<exit>"
-			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey);
+			plaintext = symmetricDecription(message, messageLen, &pt_len, simKey, &counter_recv_client);
 			if(!plaintext){
 				perror("Error during symmetric decryption");
 				exit(-1);
@@ -619,7 +635,7 @@ bool handle_forward_messages(int socket_com, struct userStruct* users, unsigned 
 				return false;
 			}
 			//If it is not "<exit>" I have to forward it to the connected client
-			message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen);
+			message = symmetricEncryption(plaintext, pt_len, simKey, &messageLen, &counter_send_client);
 			if(!message){
 				perror("Error during symmetric encryption");
 				exit(-1);
@@ -998,7 +1014,7 @@ int main (int argc, const char** argv){
 							exit(-1);
 						}
 						receive_obj(socket_com, recv_message, recv_len);
-						plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey);
+						plaintext = symmetricDecription(recv_message, recv_len, &pt_len, simKey, &counter_recv_client);
 						if(!plaintext){
 							perror("Error during symmetric decryption");
 							exit(-1);
@@ -1021,7 +1037,7 @@ int main (int argc, const char** argv){
 									perror("Error during serialization of the public key\n");
 									exit(-1);
 								}
-								buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen);
+								buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen, &counter_send_client);
 								if(!buffer){
 									perror("Error during encryption of the message\n");
 									exit(-1);
@@ -1046,7 +1062,7 @@ int main (int argc, const char** argv){
 								perror("Error during serialization of the public key\n");
 								exit(-1);
 							}
-							buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen);
+							buffer = symmetricEncryption(plaintext, pt_len, simKey, &bufferLen, &counter_send_client);
 							if(!buffer){
 								perror("Error during encryption of the message\n");
 								exit(-1);
