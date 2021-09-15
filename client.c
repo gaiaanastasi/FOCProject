@@ -870,7 +870,6 @@ int main(int argc, const char** argv){
 					}
 					receive_obj(sock, message_recv, recv_len);
 					plaintext = symmetricDecription(message_recv, recv_len, &pt_len, serverSymmetricKey, &counter_recv_server);
-					printf("risposta ricevuta\n");
 					if(plaintext == NULL){
 						perror("Error during the symmetric decription");
 						exit(-1);
@@ -931,7 +930,7 @@ int main(int argc, const char** argv){
 					IncControl(strlen("logout"));
 					strncpy(plaintext, "logout", strlen("logout")+1);
 					plaintext[strlen("logout")]='\0';
-					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len, &counter_send_client);
+					message_send = symmetricEncryption(plaintext, pt_len, serverSymmetricKey, &send_len, &counter_send_server);
 					if(!message_send){
 						perror("Error during symmetric encryption");
 						exit(-1);
